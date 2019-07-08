@@ -344,9 +344,7 @@ int main(int argc, char *argv[])
 {
 	double kp = KP, ki = KI;
 	char *device = NULL, *progname;
-	uint64_t phc_ts;
-	int64_t phc_offset;
-	int c, use_gpsd = 0, err, servo_active = 1;
+	int c, use_gpsd = 0, servo_active = 1;
 	extts_index = 1;
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
@@ -403,6 +401,7 @@ int main(int argc, char *argv[])
 	clockid_t dev = clock_open(device);
 #ifdef ENABLE_GPS
 	if (use_gpsd) {
+		int err;
 		if (err = gps_open(GPSD_SHARED_MEMORY, GPSD_SHARED_MEMORY, &gpsdata) == -1) {
 			fprintf(stderr, "%s: %d\n", gps_errstr(err), err);
 			exit(EXIT_FAILURE);
@@ -410,10 +409,8 @@ int main(int argc, char *argv[])
 
 		return do_extts_loop_gps(device, kp, ki, dev, servo_active);
 	}
-	else
+#else
+	(void) use_gpsd;
 #endif
-	{
-		return do_extts_loop(device, kp, ki, dev, servo_active);
-	}
-	exit(EXIT_SUCCESS);
+	return do_extts_loop(device, kp, ki, dev, servo_active);
 }
