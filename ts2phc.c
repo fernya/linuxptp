@@ -303,17 +303,15 @@ static void usage(char *progname)
 	fprintf(stderr,
 		"\n"
 		"usage: %s [options]\n\n"
-		" -d [dev]       external timestamp source\n"
-		" -i [channel]   index of event source (1)\n"
-		" -f             disable servo (useful in multiple instances)\n"
-		" -P [kp]        proportional constant (0.7)\n"
 		" -I [ki]        integration constant (0.3)\n"
-#ifdef ENABLE_GPS
-		" -g             attach to gpsd\n"
-#endif
-		" -t [offset]    UTC-TAI offset at the time of start\n"
+		" -P [kp]        proportional constant (0.7)\n"
+		" -d [dev]       external timestamp source\n"
 		" -e [delay]     delay of the PPS signal from the receiver\n"
+		" -f             disable servo (useful in multiple instances)\n"
+		" -g             attach to gpsd\n"
 		" -h             prints this message and exits\n"
+		" -i [channel]   index of event source (1)\n"
+		" -t [offset]    UTC-TAI offset at the time of start\n"
 		"\n",
 		progname);
 }
@@ -331,22 +329,22 @@ int main(int argc, char *argv[])
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
 	progname = progname ? 1+progname : argv[0];
-	while (EOF != (c = getopt(argc, argv, "d:i:fP:I:gt:e:h"))) {
+	while (EOF != (c = getopt(argc, argv, "I:P:d:e:fghi:t:"))) {
 		switch (c) {
-		case 'd':
-			device = optarg;
-			break;
-		case 'i':
-			extts_index = atoi(optarg);
-			break;
-		case 'f':
-			servo_active = 0;
+		case 'I':
+			ki = atof(optarg);
 			break;
 		case 'P':
 			kp = atof(optarg);
 			break;
-		case 'I':
-			ki = atof(optarg);
+		case 'd':
+			device = optarg;
+			break;
+		case 'e':
+			pps_delay = atoi(optarg);
+			break;
+		case 'f':
+			servo_active = 0;
 			break;
 		case 'g':
 #ifdef ENABLE_GPS
@@ -355,16 +353,17 @@ int main(int argc, char *argv[])
 			use_gpsd = 0;
 #endif
 			break;
+		case 'i':
+			extts_index = atoi(optarg);
+			break;
 		case 't':
 			tai_diff = atoi(optarg);
 			tai_diff *= NS_PER_SEC;
 			break;
-		case 'e':
-			pps_delay = atoi(optarg);
-			break;
 		case 'h':
 			usage(progname);
 			exit(EXIT_SUCCESS);
+		case '?':
 		default:
 			usage(progname);
 			exit(EXIT_FAILURE);
