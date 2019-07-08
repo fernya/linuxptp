@@ -80,7 +80,7 @@ snmp4lptp.o: snmp4lptp.c
 
 timemaster: phc.o print.o rtnl.o sk.o timemaster.o util.o version.o
 
-ts2phc: ts2phc.o
+ts2phc: phc.o print.o sk.o ts2phc.o util.o
 
 version.o: .version version.sh $(filter-out version.d,$(DEPEND))
 

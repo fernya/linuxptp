@@ -39,6 +39,8 @@
 #endif
 
 #include "missing.h"
+#include "util.h"
+
 #define KP 0.7
 #define KI 0.3
 #define NS_PER_SEC 1000000000LL
@@ -57,6 +59,19 @@ int pps_delay = 0;
 /* This function maps the SDP0
  * to the channel 1 periodic output */
 
+
+static void perout_close(void)
+{
+	struct ptp_extts_request extts;
+
+	memset(&extts, 0, sizeof(extts));
+	extts.index = extts_index;
+	extts.flags = 0;
+	if (ioctl(phc_fd, PTP_EXTTS_REQUEST, &extts)) {
+		perror("PTP_EXTTS_REQUEST failed");
+	}
+}
+
 static int perout_conf(int fd)
 {
 	struct ptp_pin_desc perout = {
@@ -72,27 +87,6 @@ static int perout_conf(int fd)
 	}
 
 	return 0;
-}
-
-static void quit_handler(int signum)
-{
-	int err;
-	struct ptp_extts_request extts;
-
-	memset(&extts, 0, sizeof(extts));
-	extts.index = extts_index;
-	extts.flags = 0;
-
-	err = ioctl(phc_fd, PTP_EXTTS_REQUEST, &extts);
-	if (err < 0) {
-		perror("PTP_EXTTS_REQUEST failed");
-		exit(EXIT_FAILURE);
-	}
-#ifdef ENABLE_GPS
-	gps_close(&gpsdata);
-#endif
-	close(phc_fd);
-	exit(EXIT_SUCCESS);
 }
 
 static clockid_t clock_open(char *device)
@@ -262,7 +256,7 @@ static int do_extts_loop(char *extts_device, double kp, double ki,
 		return err ? errno : 0;
 	}
 
-	while (1) {
+	while (is_running()) {
 		if (!read_extts(phc_fd, &extts_offset, &extts_ts)) {
 			continue;
 		}
@@ -301,7 +295,7 @@ static int do_extts_loop_gps(char *extts_device, double kp, double ki,
 		return err ? errno : 0;
 	}
 
-	while (1) {
+	while (is_running()) {
 		if (!read_extts(phc_fd, &extts_offset, &extts_ts)) {
 			continue;
 		} else {
@@ -342,10 +336,14 @@ static void usage(char *progname)
 
 int main(int argc, char *argv[])
 {
-	double kp = KP, ki = KI;
+	int c, err, servo_active = 1, use_gpsd = 0;
 	char *device = NULL, *progname;
-	int c, use_gpsd = 0, servo_active = 1;
+	double kp = KP, ki = KI;
+
+	handle_term_signals();
+
 	extts_index = 1;
+
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
 	progname = progname ? 1+progname : argv[0];
@@ -394,23 +392,24 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	signal(SIGTERM, quit_handler);
-	signal(SIGQUIT, quit_handler);
-	signal(SIGINT, quit_handler);
-
 	clockid_t dev = clock_open(device);
 #ifdef ENABLE_GPS
 	if (use_gpsd) {
-		int err;
 		if (err = gps_open(GPSD_SHARED_MEMORY, GPSD_SHARED_MEMORY, &gpsdata) == -1) {
 			fprintf(stderr, "%s: %d\n", gps_errstr(err), err);
 			exit(EXIT_FAILURE);
 		}
 
-		return do_extts_loop_gps(device, kp, ki, dev, servo_active);
+		err = do_extts_loop_gps(device, kp, ki, dev, servo_active);
 	}
 #else
 	(void) use_gpsd;
 #endif
-	return do_extts_loop(device, kp, ki, dev, servo_active);
+	err = do_extts_loop(device, kp, ki, dev, servo_active);
+	perout_close();
+#ifdef ENABLE_GPS
+	gps_close(&gpsdata);
+#endif
+	close(phc_fd);
+	return err;
 }
