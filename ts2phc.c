@@ -320,9 +320,10 @@ static void usage(char *progname)
 
 int main(int argc, char *argv[])
 {
-	int c, err, junk, servo_active = 1, use_gpsd = 0;
+	int c, err, index, junk, servo_active = 1, use_gpsd = 0;
 	char *config = NULL, *device = NULL, *progname;
 	double kp = KP, ki = KI;
+	struct option *opts;
 	struct config *cfg;
 
 	handle_term_signals();
@@ -332,13 +333,21 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
+	opts = config_long_options(cfg);
+
 	extts_index = 1;
 
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
 	progname = progname ? 1+progname : argv[0];
-	while (EOF != (c = getopt(argc, argv, "I:P:d:e:f:ghi:t:z"))) {
+	while (EOF != (c = getopt_long(argc, argv, "I:P:d:e:f:ghi:t:z",
+				       opts, &index))) {
 		switch (c) {
+		case 0:
+			if (config_parse_option(cfg, opts[index].name, optarg)) {
+				return -1;
+			}
+			break;
 		case 'I':
 			ki = atof(optarg);
 			break;
