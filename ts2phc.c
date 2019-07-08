@@ -38,6 +38,7 @@
 #include <gps.h>
 #endif
 
+#include "config.h"
 #include "missing.h"
 #include "util.h"
 
@@ -307,6 +308,7 @@ static void usage(char *progname)
 		" -P [kp]        proportional constant (0.7)\n"
 		" -d [dev]       external timestamp source\n"
 		" -e [delay]     delay of the PPS signal from the receiver\n"
+		" -f [file] read configuration from 'file'\n"
 		" -g             attach to gpsd\n"
 		" -h             prints this message and exits\n"
 		" -i [channel]   index of event source (1)\n"
@@ -319,17 +321,23 @@ static void usage(char *progname)
 int main(int argc, char *argv[])
 {
 	int c, err, junk, servo_active = 1, use_gpsd = 0;
-	char *device = NULL, *progname;
+	char *config = NULL, *device = NULL, *progname;
 	double kp = KP, ki = KI;
+	struct config *cfg;
 
 	handle_term_signals();
+
+	cfg = config_create();
+	if (!cfg) {
+		return -1;
+	}
 
 	extts_index = 1;
 
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
 	progname = progname ? 1+progname : argv[0];
-	while (EOF != (c = getopt(argc, argv, "I:P:d:e:ghi:t:z"))) {
+	while (EOF != (c = getopt(argc, argv, "I:P:d:e:f:ghi:t:z"))) {
 		switch (c) {
 		case 'I':
 			ki = atof(optarg);
@@ -342,6 +350,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'e':
 			pps_delay = atoi(optarg);
+			break;
+		case 'f':
+			config = optarg;
 			break;
 		case 'g':
 #ifdef ENABLE_GPS
@@ -368,6 +379,11 @@ int main(int argc, char *argv[])
 			usage(progname);
 			exit(EXIT_FAILURE);
 		}
+	}
+
+	if (config && (c = config_read(config, cfg))) {
+		config_destroy(cfg);
+		return -1;
 	}
 
 	if (!device) {
