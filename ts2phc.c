@@ -1,6 +1,6 @@
 /**
  * @file ts2phc.c
- * @brief Utility program to synchronize the PHC clock to external events 
+ * @brief Utility program to synchronize the PHC clock to external events
  * @note Copyright (C) 2013 Balint Ferencz <fernya@sch.bme.hu>
  * @note Based on the phc2sys utility
  * @note Copyright (C) 2012 Richard Cochran <richardcochran@gmail.com>
@@ -66,7 +66,7 @@ static int perout_conf(int fd)
 	};
 
 	int err = ioctl(fd, PTP_PIN_SETFUNC, &perout);
-	if (err < 0){
+	if (err < 0) {
 		perror("PTP_PIN_SETFUNC request failed");
 		return err ? errno : 0;
 	}
@@ -84,11 +84,11 @@ static void quit_handler(int signum)
 	extts.flags = 0;
 
 	err = ioctl(phc_fd, PTP_EXTTS_REQUEST, &extts);
-	if (err < 0){
+	if (err < 0) {
 		perror("PTP_EXTTS_REQUEST failed");
 		exit(EXIT_FAILURE);
 	}
-#ifdef ENABLE_GPS	
+#ifdef ENABLE_GPS
 	gps_close(&gpsdata);
 #endif
 	close(phc_fd);
@@ -220,17 +220,17 @@ static int read_extts(int fd, int64_t *offset, uint64_t *ts)
 
 	struct ptp_extts_event event;
 
-	if(!read(fd, &event, sizeof(event))) {
+	if (!read(fd, &event, sizeof(event))) {
 		perror("read extts event");
 		return 0;
 	}
-	
-	if(event.index == extts_index) {
+
+	if (event.index == extts_index) {
 		*ts = event.t.sec * NS_PER_SEC;
 		*ts += event.t.nsec;
 
 		*offset = *ts % (NS_PER_SEC);
-		if (*offset > NS_PER_SEC / 2 )
+		if (*offset > NS_PER_SEC / 2)
 			*offset -= (NS_PER_SEC);
 
 		return 1;
@@ -238,7 +238,8 @@ static int read_extts(int fd, int64_t *offset, uint64_t *ts)
 	return 0;
 }
 
-static int do_extts_loop(char *extts_device, double kp, double ki, clockid_t dst, int servo_active)
+static int do_extts_loop(char *extts_device, double kp, double ki,
+			 clockid_t dst, int servo_active)
 {
 	int64_t extts_offset;
 	uint64_t extts_ts;
@@ -256,7 +257,7 @@ static int do_extts_loop(char *extts_device, double kp, double ki, clockid_t dst
 	extts.flags = PTP_RISING_EDGE | PTP_ENABLE_FEATURE;
 
 	err = ioctl(phc_fd, PTP_EXTTS_REQUEST, &extts);
-	if (err < 0){
+	if (err < 0) {
 		perror("PTP_EXTTS_REQUEST failed");
 		return err ? errno : 0;
 	}
@@ -265,8 +266,10 @@ static int do_extts_loop(char *extts_device, double kp, double ki, clockid_t dst
 		if (!read_extts(phc_fd, &extts_offset, &extts_ts)) {
 			continue;
 		}
-		if(servo_active) 
-			do_servo(&servo, FD_TO_CLOCKID(phc_fd), extts_offset, extts_ts, kp, ki);
+		if (servo_active) {
+			do_servo(&servo, FD_TO_CLOCKID(phc_fd), extts_offset,
+				 extts_ts, kp, ki);
+		}
 		show_servo(stdout, "extts", extts_offset, extts_ts);
 	}
 	close(phc_fd);
@@ -274,7 +277,8 @@ static int do_extts_loop(char *extts_device, double kp, double ki, clockid_t dst
 }
 
 #ifdef ENABLE_GPS
-static int do_extts_loop_gps(char *extts_device, double kp, double ki, clockid_t dst, int servo_active)
+static int do_extts_loop_gps(char *extts_device, double kp, double ki,
+			     clockid_t dst, int servo_active)
 {
 	int64_t extts_offset;
 	uint64_t extts_ts;
@@ -292,7 +296,7 @@ static int do_extts_loop_gps(char *extts_device, double kp, double ki, clockid_t
 	extts.flags = PTP_RISING_EDGE | PTP_ENABLE_FEATURE;
 
 	err = ioctl(phc_fd, PTP_EXTTS_REQUEST, &extts);
-	if (err < 0){
+	if (err < 0) {
 		perror("PTP_EXTTS_REQUEST failed");
 		return err ? errno : 0;
 	}
@@ -300,14 +304,15 @@ static int do_extts_loop_gps(char *extts_device, double kp, double ki, clockid_t
 	while (1) {
 		if (!read_extts(phc_fd, &extts_offset, &extts_ts)) {
 			continue;
-		}
-		else {
-			gps_read(&gpsdata); 
+		} else {
+			gps_read(&gpsdata);
 		}
 		uint64_t utctime = (gpsdata.fix.time + 1.0) * NS_PER_SEC;
-		fprintf(stdout,"fix.time: %.0lf\t", gpsdata.fix.time);
-		if(servo_active) 
-			do_servo(&servo, FD_TO_CLOCKID(phc_fd), extts_offset - pps_delay, utctime + tai_diff, kp, ki);
+		fprintf(stdout, "fix.time: %.0lf\t", gpsdata.fix.time);
+		if (servo_active) {
+			do_servo(&servo, FD_TO_CLOCKID(phc_fd),
+				 extts_offset - pps_delay, utctime + tai_diff, kp, ki);
+		}
 		show_servo(stdout, "extts", extts_offset, extts_ts);
 	}
 	close(phc_fd);
@@ -322,11 +327,11 @@ static void usage(char *progname)
 		"usage: %s [options]\n\n"
 		" -d [dev]       external timestamp source\n"
 		" -i [channel]   index of event source (1)\n"
-		" -f 		 disable servo (useful in multiple instances)\n"
+		" -f             disable servo (useful in multiple instances)\n"
 		" -P [kp]        proportional constant (0.7)\n"
 		" -I [ki]        integration constant (0.3)\n"
 #ifdef ENABLE_GPS
-		" -g		 attach to gpsd\n"
+		" -g             attach to gpsd\n"
 #endif
 		" -t [offset]    UTC-TAI offset at the time of start\n"
 		" -e [delay]     delay of the PPS signal from the receiver\n"
@@ -397,18 +402,18 @@ int main(int argc, char *argv[])
 
 	clockid_t dev = clock_open(device);
 #ifdef ENABLE_GPS
-	if(use_gpsd) {
-		if(err=gps_open(GPSD_SHARED_MEMORY, GPSD_SHARED_MEMORY, &gpsdata) == -1) {
-			fprintf(stderr,"%s: %d\n",gps_errstr(err),err);
+	if (use_gpsd) {
+		if (err = gps_open(GPSD_SHARED_MEMORY, GPSD_SHARED_MEMORY, &gpsdata) == -1) {
+			fprintf(stderr, "%s: %d\n", gps_errstr(err), err);
 			exit(EXIT_FAILURE);
 		}
 
 		return do_extts_loop_gps(device, kp, ki, dev, servo_active);
 	}
-	else 
+	else
 #endif
-{
+	{
 		return do_extts_loop(device, kp, ki, dev, servo_active);
-}
+	}
 	exit(EXIT_SUCCESS);
 }
