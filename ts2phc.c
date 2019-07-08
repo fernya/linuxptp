@@ -79,7 +79,6 @@ static int perout_conf(int fd)
 		.func  = PTP_PF_EXTTS,
 		.chan  = 1,
 	};
-
 	int err = ioctl(fd, PTP_PIN_SETFUNC, &perout);
 	if (err < 0) {
 		perror("PTP_PIN_SETFUNC request failed");
@@ -87,29 +86,6 @@ static int perout_conf(int fd)
 	}
 
 	return 0;
-}
-
-static clockid_t clock_open(char *device)
-{
-	int fd;
-
-	if (device[0] != '/') {
-		if (!strcasecmp(device, "CLOCK_REALTIME"))
-			return CLOCK_REALTIME;
-
-		fprintf(stderr, "unknown clock %s\n", device);
-		return CLOCK_INVALID;
-	}
-
-	fd = open(device, O_RDWR);
-	if (fd < 0) {
-		fprintf(stderr, "cannot open %s: %m\n", device);
-		return CLOCK_INVALID;
-	}
-	// Set the pinmux
-	perout_conf(fd);
-
-	return FD_TO_CLOCKID(fd);
 }
 
 static void clock_ppb(clockid_t clkid, double ppb)
@@ -245,6 +221,10 @@ static int do_extts_loop(char *extts_device, double kp, double ki,
 		fprintf(stderr, "cannot open '%s': %m\n", extts_device);
 		return -1;
 	}
+	// Set the pinmux
+	if (perout_conf(phc_fd)) {
+		return -1;
+	}
 
 	memset(&extts, 0, sizeof(extts));
 	extts.index = extts_index;
@@ -282,6 +262,10 @@ static int do_extts_loop_gps(char *extts_device, double kp, double ki,
 	phc_fd = open(extts_device, O_RDWR);
 	if (phc_fd < 0) {
 		fprintf(stderr, "cannot open '%s': %m\n", extts_device);
+		return -1;
+	}
+	// Set the pinmux
+	if (perout_conf(phc_fd)) {
 		return -1;
 	}
 
@@ -336,7 +320,7 @@ static void usage(char *progname)
 
 int main(int argc, char *argv[])
 {
-	int c, err, servo_active = 1, use_gpsd = 0;
+	int c, err, junk, servo_active = 1, use_gpsd = 0;
 	char *device = NULL, *progname;
 	double kp = KP, ki = KI;
 
@@ -392,7 +376,10 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	clockid_t dev = clock_open(device);
+	clockid_t dev = posix_clock_open(device, &junk);
+	if (dev == CLOCK_INVALID) {
+		return -1;
+	}
 #ifdef ENABLE_GPS
 	if (use_gpsd) {
 		if (err = gps_open(GPSD_SHARED_MEMORY, GPSD_SHARED_MEMORY, &gpsdata) == -1) {
