@@ -39,7 +39,9 @@
 #endif
 
 #include "config.h"
+#include "clockadj.h"
 #include "missing.h"
+#include "servo.h"
 #include "util.h"
 
 #define KP 0.7
@@ -89,139 +91,62 @@ static int perout_conf(int fd)
 	return 0;
 }
 
-static void clock_ppb(clockid_t clkid, double ppb)
+
+/*
+ * Returns the time on the PPS source device at which the most recent
+ * PPS event was generated.
+ *
+ * This implementation assumes that the system time is approximately
+ * correct, and it simply drops the nanoseconds field past the full
+ * second.
+ *
+ * TODO: convert this into a proper interface that depends on the PSS
+ * source device.
+ */
+static uint64_t pps_source_gettime(void)
 {
-	struct timex tx;
-	memset(&tx, 0, sizeof(tx));
-	tx.modes = ADJ_FREQUENCY;
-	tx.freq = (long) (ppb * 65.536);
-	if (clock_adjtime(clkid, &tx) < 0)
-		fprintf(stderr, "failed to adjust the clock: %m\n");
+	struct timespec now;
+	uint64_t result;
+
+	clock_gettime(CLOCK_TAI, &now);
+	result = now.tv_sec * NS_PER_SEC;
+
+	return result;
 }
 
-static void clock_step(clockid_t clkid, int64_t ns)
+static int read_extts(int fd, int64_t *offset, uint64_t *local_ts)
 {
-	struct timex tx;
-	int sign = 1;
-	if (ns < 0) {
-		sign = -1;
-		ns *= -1;
-	}
-	memset(&tx, 0, sizeof(tx));
-	tx.modes = ADJ_SETOFFSET | ADJ_NANO;
-	tx.time.tv_sec  = sign * (ns / NS_PER_SEC);
-	tx.time.tv_usec = sign * (ns % NS_PER_SEC);
-	/*
-	 * The value of a timeval is the sum of its fields, but the
-	 * field tv_usec must always be non-negative.
-	 */
-	if (tx.time.tv_usec < 0) {
-		tx.time.tv_sec  -= 1;
-		tx.time.tv_usec += 1000000000;
-	}
-	if (clock_adjtime(clkid, &tx) < 0)
-		fprintf(stderr, "failed to step clock: %m\n");
-}
-
-struct servo {
-	uint64_t saved_ts;
-	int64_t saved_offset;
-	double drift;
-	enum {
-		SAMPLE_0, SAMPLE_1, SAMPLE_2, SAMPLE_3, SAMPLE_N
-	} state;
-};
-
-static struct servo servo;
-
-static void show_servo(FILE *fp, const char *label, int64_t offset, uint64_t ts)
-{
-	fprintf(fp, "%s %9lld s%d %lld.%09llu drift %.2f\n", label, (long long)offset,
-		servo.state, ts / NS_PER_SEC, ts % NS_PER_SEC, servo.drift);
-	fflush(fp);
-}
-
-static void do_servo(struct servo *srv, clockid_t dst,
-		     int64_t offset, uint64_t ts, double kp, double ki)
-{
-	double ki_term, ppb;
-	struct timespec tspec;
-
-	tspec.tv_sec = ts / NS_PER_SEC;
-	tspec.tv_nsec = 0;
-
-	switch (srv->state) {
-	case SAMPLE_0:
-		clock_ppb(dst, 0.0);
-		srv->saved_offset = offset;
-		srv->saved_ts = ts;
-		clock_settime(dst, &tspec);
-		srv->state = SAMPLE_1;
-		break;
-	case SAMPLE_1:
-		srv->state = SAMPLE_2;
-		break;
-	case SAMPLE_2:
-		srv->state = SAMPLE_3;
-		break;
-	case SAMPLE_3:
-		srv->drift = (offset - srv->saved_offset) * 1e9 /
-			(ts - srv->saved_ts);
-		clock_ppb(dst, -srv->drift);
-		clock_step(dst, -offset);
-		srv->state = SAMPLE_N;
-		break;
-	case SAMPLE_N:
-		ki_term = ki * offset;
-		ppb = kp * offset + srv->drift + ki_term;
-		if (ppb < min_ppb) {
-			ppb = min_ppb;
-		} else if (ppb > max_ppb) {
-			ppb = max_ppb;
-		} else {
-			srv->drift += ki_term;
-		}
-		clock_ppb(dst, -ppb);
-		break;
-	}
-}
-
-static int read_extts(int fd, int64_t *offset, uint64_t *ts)
-{
-
+	uint64_t event_tns, pps_source_time;
 	struct ptp_extts_event event;
+	int cnt;
 
-	if (!read(fd, &event, sizeof(event))) {
+	cnt = read(fd, &event, sizeof(event));
+	if (cnt != sizeof(event)) {
 		perror("read extts event");
-		return 0;
+		return -1;
 	}
-
-	if (event.index == extts_index) {
-		*ts = event.t.sec * NS_PER_SEC;
-		*ts += event.t.nsec;
-
-		*offset = *ts % (NS_PER_SEC);
-		if (*offset > NS_PER_SEC / 2)
-			*offset -= (NS_PER_SEC);
-
-		return 1;
+	if (event.index != extts_index) {
+		return -1;
 	}
+	pps_source_time = pps_source_gettime();
+	event_tns = event.t.sec * NS_PER_SEC;
+	event_tns += event.t.nsec;
+	*offset = event_tns - pps_source_time;
+	*local_ts = event_tns;
+
 	return 0;
 }
 
-static int do_extts_loop(char *extts_device, double kp, double ki,
-			 clockid_t dst, int servo_active)
+static int do_extts_loop(clockid_t clkid, struct servo *servo)
 {
-	int64_t extts_offset;
-	uint64_t extts_ts;
-	int err;
 	struct ptp_extts_request extts;
+	enum servo_state state;
+	uint64_t extts_ts;
+	int64_t offset;
+	double adj;
+	int err;
 
-	phc_fd = open(extts_device, O_RDWR);
-	if (phc_fd < 0) {
-		fprintf(stderr, "cannot open '%s': %m\n", extts_device);
-		return -1;
-	}
+	phc_fd = CLOCKID_TO_FD(clkid);
 	// Set the pinmux
 	if (perout_conf(phc_fd)) {
 		return -1;
@@ -238,14 +163,22 @@ static int do_extts_loop(char *extts_device, double kp, double ki,
 	}
 
 	while (is_running()) {
-		if (!read_extts(phc_fd, &extts_offset, &extts_ts)) {
+		if (read_extts(phc_fd, &offset, &extts_ts)) {
 			continue;
 		}
-		if (servo_active) {
-			do_servo(&servo, FD_TO_CLOCKID(phc_fd), extts_offset,
-				 extts_ts, kp, ki);
+		adj = servo_sample(servo, offset, extts_ts, 0.0, &state);
+		switch (state) {
+		case SERVO_UNLOCKED:
+			break;
+		case SERVO_JUMP:
+			clockadj_set_freq(clkid, -adj);
+			clockadj_step(clkid, -offset);
+			break;
+		case SERVO_LOCKED:
+		case SERVO_LOCKED_STABLE:
+			clockadj_set_freq(clkid, -adj);
+			break;
 		}
-		show_servo(stdout, "extts", extts_offset, extts_ts);
 	}
 	close(phc_fd);
 	return 0;
@@ -253,7 +186,7 @@ static int do_extts_loop(char *extts_device, double kp, double ki,
 
 #ifdef ENABLE_GPS
 static int do_extts_loop_gps(char *extts_device, double kp, double ki,
-			     clockid_t dst, int servo_active)
+			     clockid_t dst, struct servo* servo)
 {
 	int64_t extts_offset;
 	uint64_t extts_ts;
@@ -304,8 +237,6 @@ static void usage(char *progname)
 	fprintf(stderr,
 		"\n"
 		"usage: %s [options]\n\n"
-		" -I [ki]        integration constant (0.3)\n"
-		" -P [kp]        proportional constant (0.7)\n"
 		" -d [dev]       external timestamp source\n"
 		" -e [delay]     delay of the PPS signal from the receiver\n"
 		" -f [file] read configuration from 'file'\n"
@@ -320,11 +251,12 @@ static void usage(char *progname)
 
 int main(int argc, char *argv[])
 {
-	int c, err, index, junk, servo_active = 1, use_gpsd = 0;
+	int c, err = 0, index, junk, servo_active = 1, use_gpsd = 0;
 	char *config = NULL, *device = NULL, *progname;
-	double kp = KP, ki = KI;
+	struct servo *servo = NULL;
 	struct option *opts;
 	struct config *cfg;
+	clockid_t clkid;
 
 	handle_term_signals();
 
@@ -340,19 +272,13 @@ int main(int argc, char *argv[])
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
 	progname = progname ? 1+progname : argv[0];
-	while (EOF != (c = getopt_long(argc, argv, "I:P:d:e:f:ghi:t:z",
+	while (EOF != (c = getopt_long(argc, argv, "d:e:f:ghi:t:z",
 				       opts, &index))) {
 		switch (c) {
 		case 0:
 			if (config_parse_option(cfg, opts[index].name, optarg)) {
 				return -1;
 			}
-			break;
-		case 'I':
-			ki = atof(optarg);
-			break;
-		case 'P':
-			kp = atof(optarg);
 			break;
 		case 'd':
 			device = optarg;
@@ -400,9 +326,16 @@ int main(int argc, char *argv[])
 		exit(EXIT_FAILURE);
 	}
 
-	clockid_t dev = posix_clock_open(device, &junk);
-	if (dev == CLOCK_INVALID) {
+	clkid = posix_clock_open(device, &junk);
+	if (clkid == CLOCK_INVALID) {
 		return -1;
+	}
+	if (servo_active) {
+		servo = servo_create(cfg, CLOCK_SERVO_PI, 0, 100000, 0);
+		if (!servo) {
+			return -1;
+		}
+		servo_sync_interval(servo, 1.0);
 	}
 #ifdef ENABLE_GPS
 	if (use_gpsd) {
@@ -411,12 +344,14 @@ int main(int argc, char *argv[])
 			exit(EXIT_FAILURE);
 		}
 
-		err = do_extts_loop_gps(device, kp, ki, dev, servo_active);
+		err = do_extts_loop_gps(device, kp, ki, dev, servo);
 	}
 #else
 	(void) use_gpsd;
 #endif
-	err = do_extts_loop(device, kp, ki, dev, servo_active);
+	if (servo) {
+		err = do_extts_loop(clkid, servo);
+	}
 	perout_close();
 #ifdef ENABLE_GPS
 	gps_close(&gpsdata);
