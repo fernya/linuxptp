@@ -41,15 +41,9 @@
 #include "servo.h"
 #include "util.h"
 
-#define KP 0.7
-#define KI 0.3
 #define NS_PER_SEC 1000000000LL
 
-#define max_ppb  512000
-#define min_ppb -512000
-
 int phc_fd;
-uint64_t tai_diff;
 int extts_index;
 int pps_delay = 0;
 
@@ -188,7 +182,6 @@ static void usage(char *progname)
 		" -f [file] read configuration from 'file'\n"
 		" -h             prints this message and exits\n"
 		" -i [channel]   index of event source (1)\n"
-		" -t [offset]    UTC-TAI offset at the time of start\n"
 		" -z             disable servo (useful in multiple instances)\n"
 		"\n",
 		progname);
@@ -217,8 +210,7 @@ int main(int argc, char *argv[])
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
 	progname = progname ? 1+progname : argv[0];
-	while (EOF != (c = getopt_long(argc, argv, "d:e:f:hi:t:z",
-				       opts, &index))) {
+	while (EOF != (c = getopt_long(argc, argv, "d:e:f:hi:z", opts, &index))) {
 		switch (c) {
 		case 0:
 			if (config_parse_option(cfg, opts[index].name, optarg)) {
@@ -236,10 +228,6 @@ int main(int argc, char *argv[])
 			break;
 		case 'i':
 			extts_index = atoi(optarg);
-			break;
-		case 't':
-			tai_diff = atoi(optarg);
-			tai_diff *= NS_PER_SEC;
 			break;
 		case 'z':
 			servo_active = 0;
