@@ -41,6 +41,7 @@
 #include "print.h"
 #include "servo.h"
 #include "util.h"
+#include "version.h"
 
 #define NS_PER_SEC 1000000000LL
 
@@ -172,6 +173,7 @@ static void usage(char *progname)
 		" -i [channel]   index of event source (1)\n"
 		" -m             print messages to stdout\n"
 		" -q             do not print messages to the syslog\n"
+		" -v             prints the software version and exits\n"
 		"\n",
 		progname);
 }
@@ -197,7 +199,7 @@ int main(int argc, char *argv[])
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
 	progname = progname ? 1+progname : argv[0];
-	while (EOF != (c = getopt_long(argc, argv, "c:f:hi:mq", opts, &index))) {
+	while (EOF != (c = getopt_long(argc, argv, "c:f:hi:mqv", opts, &index))) {
 		switch (c) {
 		case 0:
 			if (config_parse_option(cfg, opts[index].name, optarg)) {
@@ -220,6 +222,10 @@ int main(int argc, char *argv[])
 		case 'q':
 			config_set_int(cfg, "use_syslog", 0);
 			break;
+		case 'v':
+			version_show(stdout);
+			config_destroy(cfg);
+			return 0;
 		case 'h':
 			usage(progname);
 			config_destroy(cfg);
