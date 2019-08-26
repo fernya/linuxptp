@@ -257,7 +257,6 @@ int main(int argc, char *argv[])
 	err = do_extts_loop(clkid, servo);
 
 	perout_close();
-	close(phc_fd);
 
 	return err;
 }
