@@ -50,18 +50,6 @@ int pps_delay = 0;
 /* This function maps the SDP0
  * to the channel 1 periodic output */
 
-static void perout_close(void)
-{
-	struct ptp_extts_request extts;
-
-	memset(&extts, 0, sizeof(extts));
-	extts.index = extts_index;
-	extts.flags = 0;
-	if (ioctl(phc_fd, PTP_EXTTS_REQUEST, &extts)) {
-		perror("PTP_EXTTS_REQUEST failed");
-	}
-}
-
 static int enable_input_pin(int fd)
 {
 	struct ptp_pin_desc perout = {
@@ -164,6 +152,14 @@ static int do_extts_loop(clockid_t clkid, struct servo *servo)
 			break;
 		}
 	}
+
+	memset(&extts, 0, sizeof(extts));
+	extts.index = extts_index;
+	extts.flags = 0;
+	if (ioctl(phc_fd, PTP_EXTTS_REQUEST, &extts)) {
+		perror("PTP_EXTTS_REQUEST failed");
+	}
+
 	close(phc_fd);
 	return 0;
 }
@@ -255,8 +251,6 @@ int main(int argc, char *argv[])
 	servo_sync_interval(servo, 1.0);
 
 	err = do_extts_loop(clkid, servo);
-
-	perout_close();
 
 	return err;
 }
