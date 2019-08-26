@@ -165,8 +165,8 @@ static void usage(char *progname)
 	fprintf(stderr,
 		"\n"
 		"usage: %s [options]\n\n"
-		" -d [dev]       external timestamp source\n"
-		" -f [file] read configuration from 'file'\n"
+		" -c [dev]       slave clock\n"
+		" -f [file]      read configuration from 'file'\n"
 		" -h             prints this message and exits\n"
 		" -i [channel]   index of event source (1)\n"
 		"\n",
@@ -175,7 +175,7 @@ static void usage(char *progname)
 
 int main(int argc, char *argv[])
 {
-	char *config = NULL, *device = NULL, *progname;
+	char *config = NULL, *progname, *slave_clock_device = NULL;
 	int c, err = 0, extts_index = 1, index, junk;
 	struct servo *servo;
 	struct option *opts;
@@ -194,15 +194,15 @@ int main(int argc, char *argv[])
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
 	progname = progname ? 1+progname : argv[0];
-	while (EOF != (c = getopt_long(argc, argv, "d:f:hi:", opts, &index))) {
+	while (EOF != (c = getopt_long(argc, argv, "c:f:hi:", opts, &index))) {
 		switch (c) {
 		case 0:
 			if (config_parse_option(cfg, opts[index].name, optarg)) {
 				return -1;
 			}
 			break;
-		case 'd':
-			device = optarg;
+		case 'c':
+			slave_clock_device = optarg;
 			break;
 		case 'f':
 			config = optarg;
@@ -225,12 +225,12 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	if (!device) {
+	if (!slave_clock_device) {
 		usage(progname);
 		exit(EXIT_FAILURE);
 	}
 
-	clkid = posix_clock_open(device, &junk);
+	clkid = posix_clock_open(slave_clock_device, &junk);
 	if (clkid == CLOCK_INVALID) {
 		return -1;
 	}
