@@ -31,12 +31,15 @@ static void usage(char *progname)
 	fprintf(stderr,
 		"\n"
 		"usage: %s [options]\n\n"
-		" -c [dev]       slave clock\n"
+		" -c [dev|name]  phc slave clock (like /dev/ptp0 or eth0)\n"
 		" -f [file]      read configuration from 'file'\n"
 		" -h             prints this message and exits\n"
 		" -i [channel]   index of event source (1)\n"
 		" -m             print messages to stdout\n"
 		" -q             do not print messages to the syslog\n"
+		" -s [dev|name]  source of the PPS signal\n"
+		"                may take any of the following forms:\n"
+		"                    generic - an external 1-PPS without ToD information\n"
 		" -v             prints the software version and exits\n"
 		"\n",
 		progname);
@@ -44,7 +47,8 @@ static void usage(char *progname)
 
 int main(int argc, char *argv[])
 {
-	char *config = NULL, *progname, *slave_clock_device = NULL;
+	char *config = NULL, *pps_source = NULL, *progname,
+		*slave_clock_device = NULL;
 	int c, err = 0, extts_index = 1, index;
 	struct ts2phc_slave *slave;
 	struct option *opts;
@@ -62,7 +66,7 @@ int main(int argc, char *argv[])
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
 	progname = progname ? 1+progname : argv[0];
-	while (EOF != (c = getopt_long(argc, argv, "c:f:hi:mqv", opts, &index))) {
+	while (EOF != (c = getopt_long(argc, argv, "c:f:hi:mqs:v", opts, &index))) {
 		switch (c) {
 		case 0:
 			if (config_parse_option(cfg, opts[index].name, optarg)) {
@@ -85,6 +89,9 @@ int main(int argc, char *argv[])
 		case 'q':
 			config_set_int(cfg, "use_syslog", 0);
 			break;
+		case 's':
+			pps_source = optarg;
+			break;
 		case 'v':
 			version_show(stdout);
 			config_destroy(cfg);
@@ -92,16 +99,22 @@ int main(int argc, char *argv[])
 		case 'h':
 			usage(progname);
 			config_destroy(cfg);
-			exit(EXIT_SUCCESS);
+			return -1;
 		case '?':
 		default:
 			usage(progname);
 			config_destroy(cfg);
-			exit(EXIT_FAILURE);
+			return -1;
 		}
 	}
 
 	if (config && (c = config_read(config, cfg))) {
+		config_destroy(cfg);
+		return -1;
+	}
+
+	if (!pps_source || !slave_clock_device) {
+		usage(progname);
 		config_destroy(cfg);
 		return -1;
 	}
@@ -111,12 +124,6 @@ int main(int argc, char *argv[])
 	print_set_verbose(config_get_int(cfg, NULL, "verbose"));
 	print_set_syslog(config_get_int(cfg, NULL, "use_syslog"));
 	print_set_level(config_get_int(cfg, NULL, "logging_level"));
-
-	if (!slave_clock_device) {
-		usage(progname);
-		config_destroy(cfg);
-		exit(EXIT_FAILURE);
-	}
 
 	slave = ts2phc_slave_create(cfg, slave_clock_device, extts_index);
 	if (!slave) {
