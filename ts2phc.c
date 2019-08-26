@@ -43,9 +43,6 @@
 
 #define NS_PER_SEC 1000000000LL
 
-int phc_fd;
-int extts_index;
-
 /* This function maps the SDP0
  * to the channel 1 periodic output */
 
@@ -86,7 +83,7 @@ static uint64_t pps_source_gettime(void)
 	return result;
 }
 
-static int read_extts(int fd, int64_t *offset, uint64_t *local_ts)
+static int read_extts(int fd, int64_t *offset, uint64_t *local_ts, int extts_index)
 {
 	uint64_t event_tns, pps_source_time;
 	struct ptp_extts_event event;
@@ -109,14 +106,14 @@ static int read_extts(int fd, int64_t *offset, uint64_t *local_ts)
 	return 0;
 }
 
-static int do_extts_loop(clockid_t clkid, struct servo *servo)
+static int do_extts_loop(clockid_t clkid, struct servo *servo, int extts_index)
 {
 	struct ptp_extts_request extts;
 	enum servo_state state;
 	uint64_t extts_ts;
+	int err, phc_fd;
 	int64_t offset;
 	double adj;
-	int err;
 
 	phc_fd = CLOCKID_TO_FD(clkid);
 	if (enable_input_pin(phc_fd)) {
@@ -134,7 +131,7 @@ static int do_extts_loop(clockid_t clkid, struct servo *servo)
 	}
 
 	while (is_running()) {
-		if (read_extts(phc_fd, &offset, &extts_ts)) {
+		if (read_extts(phc_fd, &offset, &extts_ts, extts_index)) {
 			continue;
 		}
 		adj = servo_sample(servo, offset, extts_ts, 0.0, &state);
@@ -179,7 +176,7 @@ static void usage(char *progname)
 int main(int argc, char *argv[])
 {
 	char *config = NULL, *device = NULL, *progname;
-	int c, err = 0, index, junk;
+	int c, err = 0, extts_index = 1, index, junk;
 	struct servo *servo;
 	struct option *opts;
 	struct config *cfg;
@@ -193,8 +190,6 @@ int main(int argc, char *argv[])
 	}
 
 	opts = config_long_options(cfg);
-
-	extts_index = 1;
 
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
@@ -245,7 +240,7 @@ int main(int argc, char *argv[])
 	}
 	servo_sync_interval(servo, 1.0);
 
-	err = do_extts_loop(clkid, servo);
+	err = do_extts_loop(clkid, servo, extts_index);
 
 	return err;
 }
