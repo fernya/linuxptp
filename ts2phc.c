@@ -62,7 +62,7 @@ static void perout_close(void)
 	}
 }
 
-static int perout_conf(int fd)
+static int enable_input_pin(int fd)
 {
 	struct ptp_pin_desc perout = {
 		.index = 0,
@@ -72,12 +72,10 @@ static int perout_conf(int fd)
 	int err = ioctl(fd, PTP_PIN_SETFUNC, &perout);
 	if (err < 0) {
 		perror("PTP_PIN_SETFUNC request failed");
-		return err ? errno : 0;
+		return -1;
 	}
-
 	return 0;
 }
-
 
 /*
  * Returns the time on the PPS source device at which the most recent
@@ -134,8 +132,7 @@ static int do_extts_loop(clockid_t clkid, struct servo *servo)
 	int err;
 
 	phc_fd = CLOCKID_TO_FD(clkid);
-	// Set the pinmux
-	if (perout_conf(phc_fd)) {
+	if (enable_input_pin(phc_fd)) {
 		return -1;
 	}
 
