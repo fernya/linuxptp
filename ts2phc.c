@@ -45,7 +45,6 @@
 
 int phc_fd;
 int extts_index;
-int pps_delay = 0;
 
 /* This function maps the SDP0
  * to the channel 1 periodic output */
@@ -170,7 +169,6 @@ static void usage(char *progname)
 		"\n"
 		"usage: %s [options]\n\n"
 		" -d [dev]       external timestamp source\n"
-		" -e [delay]     delay of the PPS signal from the receiver\n"
 		" -f [file] read configuration from 'file'\n"
 		" -h             prints this message and exits\n"
 		" -i [channel]   index of event source (1)\n"
@@ -201,7 +199,7 @@ int main(int argc, char *argv[])
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
 	progname = progname ? 1+progname : argv[0];
-	while (EOF != (c = getopt_long(argc, argv, "d:e:f:hi:", opts, &index))) {
+	while (EOF != (c = getopt_long(argc, argv, "d:f:hi:", opts, &index))) {
 		switch (c) {
 		case 0:
 			if (config_parse_option(cfg, opts[index].name, optarg)) {
@@ -210,9 +208,6 @@ int main(int argc, char *argv[])
 			break;
 		case 'd':
 			device = optarg;
-			break;
-		case 'e':
-			pps_delay = atoi(optarg);
 			break;
 		case 'f':
 			config = optarg;
