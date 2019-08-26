@@ -50,7 +50,6 @@ int pps_delay = 0;
 /* This function maps the SDP0
  * to the channel 1 periodic output */
 
-
 static void perout_close(void)
 {
 	struct ptp_extts_request extts;
@@ -182,7 +181,6 @@ static void usage(char *progname)
 		" -f [file] read configuration from 'file'\n"
 		" -h             prints this message and exits\n"
 		" -i [channel]   index of event source (1)\n"
-		" -z             disable servo (useful in multiple instances)\n"
 		"\n",
 		progname);
 }
@@ -190,8 +188,8 @@ static void usage(char *progname)
 int main(int argc, char *argv[])
 {
 	char *config = NULL, *device = NULL, *progname;
-	int c, err = 0, index, junk, servo_active = 1;
-	struct servo *servo = NULL;
+	int c, err = 0, index, junk;
+	struct servo *servo;
 	struct option *opts;
 	struct config *cfg;
 	clockid_t clkid;
@@ -210,7 +208,7 @@ int main(int argc, char *argv[])
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
 	progname = progname ? 1+progname : argv[0];
-	while (EOF != (c = getopt_long(argc, argv, "d:e:f:hi:z", opts, &index))) {
+	while (EOF != (c = getopt_long(argc, argv, "d:e:f:hi:", opts, &index))) {
 		switch (c) {
 		case 0:
 			if (config_parse_option(cfg, opts[index].name, optarg)) {
@@ -228,9 +226,6 @@ int main(int argc, char *argv[])
 			break;
 		case 'i':
 			extts_index = atoi(optarg);
-			break;
-		case 'z':
-			servo_active = 0;
 			break;
 		case 'h':
 			usage(progname);
@@ -256,17 +251,16 @@ int main(int argc, char *argv[])
 	if (clkid == CLOCK_INVALID) {
 		return -1;
 	}
-	if (servo_active) {
-		servo = servo_create(cfg, CLOCK_SERVO_PI, 0, 100000, 0);
-		if (!servo) {
-			return -1;
-		}
-		servo_sync_interval(servo, 1.0);
+	servo = servo_create(cfg, CLOCK_SERVO_PI, 0, 100000, 0);
+	if (!servo) {
+		return -1;
 	}
-	if (servo) {
-		err = do_extts_loop(clkid, servo);
-	}
+	servo_sync_interval(servo, 1.0);
+
+	err = do_extts_loop(clkid, servo);
+
 	perout_close();
 	close(phc_fd);
+
 	return err;
 }
