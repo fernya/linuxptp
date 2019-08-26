@@ -201,6 +201,7 @@ int main(int argc, char *argv[])
 		switch (c) {
 		case 0:
 			if (config_parse_option(cfg, opts[index].name, optarg)) {
+				config_destroy(cfg);
 				return -1;
 			}
 			break;
@@ -221,10 +222,12 @@ int main(int argc, char *argv[])
 			break;
 		case 'h':
 			usage(progname);
+			config_destroy(cfg);
 			exit(EXIT_SUCCESS);
 		case '?':
 		default:
 			usage(progname);
+			config_destroy(cfg);
 			exit(EXIT_FAILURE);
 		}
 	}
@@ -242,20 +245,24 @@ int main(int argc, char *argv[])
 
 	if (!slave_clock_device) {
 		usage(progname);
+		config_destroy(cfg);
 		exit(EXIT_FAILURE);
 	}
 
 	clkid = posix_clock_open(slave_clock_device, &junk);
 	if (clkid == CLOCK_INVALID) {
+		config_destroy(cfg);
 		return -1;
 	}
 	servo = servo_create(cfg, CLOCK_SERVO_PI, 0, 100000, 0);
 	if (!servo) {
+		config_destroy(cfg);
 		return -1;
 	}
 	servo_sync_interval(servo, 1.0);
 
 	err = do_extts_loop(clkid, servo, extts_index);
 
+	config_destroy(cfg);
 	return err;
 }
