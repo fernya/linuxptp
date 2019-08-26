@@ -34,9 +34,6 @@
 #include <math.h>
 
 #include <linux/ptp_clock.h>
-#ifdef ENABLE_GPS
-#include <gps.h>
-#endif
 
 #include "config.h"
 #include "clockadj.h"
@@ -53,9 +50,6 @@
 
 int phc_fd;
 uint64_t tai_diff;
-#ifdef ENABLE_GPS
-static struct gps_data_t gpsdata;
-#endif
 int extts_index;
 int pps_delay = 0;
 
@@ -184,54 +178,6 @@ static int do_extts_loop(clockid_t clkid, struct servo *servo)
 	return 0;
 }
 
-#ifdef ENABLE_GPS
-static int do_extts_loop_gps(char *extts_device, double kp, double ki,
-			     clockid_t dst, struct servo* servo)
-{
-	int64_t extts_offset;
-	uint64_t extts_ts;
-	int err;
-	struct ptp_extts_request extts;
-
-	phc_fd = open(extts_device, O_RDWR);
-	if (phc_fd < 0) {
-		fprintf(stderr, "cannot open '%s': %m\n", extts_device);
-		return -1;
-	}
-	// Set the pinmux
-	if (perout_conf(phc_fd)) {
-		return -1;
-	}
-
-	memset(&extts, 0, sizeof(extts));
-	extts.index = extts_index;
-	extts.flags = PTP_RISING_EDGE | PTP_ENABLE_FEATURE;
-
-	err = ioctl(phc_fd, PTP_EXTTS_REQUEST, &extts);
-	if (err < 0) {
-		perror("PTP_EXTTS_REQUEST failed");
-		return err ? errno : 0;
-	}
-
-	while (is_running()) {
-		if (!read_extts(phc_fd, &extts_offset, &extts_ts)) {
-			continue;
-		} else {
-			gps_read(&gpsdata);
-		}
-		uint64_t utctime = (gpsdata.fix.time + 1.0) * NS_PER_SEC;
-		fprintf(stdout, "fix.time: %.0lf\t", gpsdata.fix.time);
-		if (servo_active) {
-			do_servo(&servo, FD_TO_CLOCKID(phc_fd),
-				 extts_offset - pps_delay, utctime + tai_diff, kp, ki);
-		}
-		show_servo(stdout, "extts", extts_offset, extts_ts);
-	}
-	close(phc_fd);
-	return 0;
-}
-#endif
-
 static void usage(char *progname)
 {
 	fprintf(stderr,
@@ -240,7 +186,6 @@ static void usage(char *progname)
 		" -d [dev]       external timestamp source\n"
 		" -e [delay]     delay of the PPS signal from the receiver\n"
 		" -f [file] read configuration from 'file'\n"
-		" -g             attach to gpsd\n"
 		" -h             prints this message and exits\n"
 		" -i [channel]   index of event source (1)\n"
 		" -t [offset]    UTC-TAI offset at the time of start\n"
@@ -251,8 +196,8 @@ static void usage(char *progname)
 
 int main(int argc, char *argv[])
 {
-	int c, err = 0, index, junk, servo_active = 1, use_gpsd = 0;
 	char *config = NULL, *device = NULL, *progname;
+	int c, err = 0, index, junk, servo_active = 1;
 	struct servo *servo = NULL;
 	struct option *opts;
 	struct config *cfg;
@@ -272,7 +217,7 @@ int main(int argc, char *argv[])
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
 	progname = progname ? 1+progname : argv[0];
-	while (EOF != (c = getopt_long(argc, argv, "d:e:f:ghi:t:z",
+	while (EOF != (c = getopt_long(argc, argv, "d:e:f:hi:t:z",
 				       opts, &index))) {
 		switch (c) {
 		case 0:
@@ -288,13 +233,6 @@ int main(int argc, char *argv[])
 			break;
 		case 'f':
 			config = optarg;
-			break;
-		case 'g':
-#ifdef ENABLE_GPS
-			use_gpsd = 1;
-#else
-			use_gpsd = 0;
-#endif
 			break;
 		case 'i':
 			extts_index = atoi(optarg);
@@ -337,25 +275,10 @@ int main(int argc, char *argv[])
 		}
 		servo_sync_interval(servo, 1.0);
 	}
-#ifdef ENABLE_GPS
-	if (use_gpsd) {
-		if (err = gps_open(GPSD_SHARED_MEMORY, GPSD_SHARED_MEMORY, &gpsdata) == -1) {
-			fprintf(stderr, "%s: %d\n", gps_errstr(err), err);
-			exit(EXIT_FAILURE);
-		}
-
-		err = do_extts_loop_gps(device, kp, ki, dev, servo);
-	}
-#else
-	(void) use_gpsd;
-#endif
 	if (servo) {
 		err = do_extts_loop(clkid, servo);
 	}
 	perout_close();
-#ifdef ENABLE_GPS
-	gps_close(&gpsdata);
-#endif
 	close(phc_fd);
 	return err;
 }
