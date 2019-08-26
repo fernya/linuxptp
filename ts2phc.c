@@ -38,6 +38,7 @@
 #include "config.h"
 #include "clockadj.h"
 #include "missing.h"
+#include "print.h"
 #include "servo.h"
 #include "util.h"
 
@@ -55,7 +56,7 @@ static int enable_input_pin(int fd)
 	};
 	int err = ioctl(fd, PTP_PIN_SETFUNC, &perout);
 	if (err < 0) {
-		perror("PTP_PIN_SETFUNC request failed");
+		pr_err("PTP_PIN_SETFUNC request failed: %m");
 		return -1;
 	}
 	return 0;
@@ -91,7 +92,7 @@ static int read_extts(int fd, int64_t *offset, uint64_t *local_ts, int extts_ind
 
 	cnt = read(fd, &event, sizeof(event));
 	if (cnt != sizeof(event)) {
-		perror("read extts event");
+		pr_err("read extts event failed: %m");
 		return -1;
 	}
 	if (event.index != extts_index) {
@@ -126,7 +127,7 @@ static int do_extts_loop(clockid_t clkid, struct servo *servo, int extts_index)
 
 	err = ioctl(phc_fd, PTP_EXTTS_REQUEST, &extts);
 	if (err < 0) {
-		perror("PTP_EXTTS_REQUEST failed");
+		pr_err("PTP_EXTTS_REQUEST failed: %m");
 		return err ? errno : 0;
 	}
 
@@ -153,7 +154,7 @@ static int do_extts_loop(clockid_t clkid, struct servo *servo, int extts_index)
 	extts.index = extts_index;
 	extts.flags = 0;
 	if (ioctl(phc_fd, PTP_EXTTS_REQUEST, &extts)) {
-		perror("PTP_EXTTS_REQUEST failed");
+		pr_err("PTP_EXTTS_REQUEST failed: %m");
 	}
 
 	close(phc_fd);
@@ -169,6 +170,8 @@ static void usage(char *progname)
 		" -f [file]      read configuration from 'file'\n"
 		" -h             prints this message and exits\n"
 		" -i [channel]   index of event source (1)\n"
+		" -m             print messages to stdout\n"
+		" -q             do not print messages to the syslog\n"
 		"\n",
 		progname);
 }
@@ -194,7 +197,7 @@ int main(int argc, char *argv[])
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
 	progname = progname ? 1+progname : argv[0];
-	while (EOF != (c = getopt_long(argc, argv, "c:f:hi:", opts, &index))) {
+	while (EOF != (c = getopt_long(argc, argv, "c:f:hi:mq", opts, &index))) {
 		switch (c) {
 		case 0:
 			if (config_parse_option(cfg, opts[index].name, optarg)) {
@@ -210,6 +213,12 @@ int main(int argc, char *argv[])
 		case 'i':
 			extts_index = atoi(optarg);
 			break;
+		case 'm':
+			config_set_int(cfg, "verbose", 1);
+			break;
+		case 'q':
+			config_set_int(cfg, "use_syslog", 0);
+			break;
 		case 'h':
 			usage(progname);
 			exit(EXIT_SUCCESS);
@@ -224,6 +233,12 @@ int main(int argc, char *argv[])
 		config_destroy(cfg);
 		return -1;
 	}
+
+	print_set_progname(progname);
+	print_set_tag(config_get_string(cfg, NULL, "message_tag"));
+	print_set_verbose(config_get_int(cfg, NULL, "verbose"));
+	print_set_syslog(config_get_int(cfg, NULL, "use_syslog"));
+	print_set_level(config_get_int(cfg, NULL, "logging_level"));
 
 	if (!slave_clock_device) {
 		usage(progname);
