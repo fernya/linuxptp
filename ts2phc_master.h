@@ -26,10 +26,11 @@ enum pps_master_type {
 /**
  * Create a new instance of a PPS master clock.
  * @param cfg	Pointer to a valid configuration. 
+ * @param dev   Name of the master clock or NULL.
  * @param type	The type of the clock to create.
  * @return	A pointer to a new PPS master clock on success, NULL otherwise.
  */
-struct pps_master *pps_master_create(struct config *cfg,
+struct pps_master *pps_master_create(struct config *cfg, char *dev,
 				     enum pps_master_type type);
 
 /**

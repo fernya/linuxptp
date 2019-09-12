@@ -24,6 +24,7 @@
 #include "config.h"
 #include "print.h"
 #include "ts2phc_slave.h"
+#include "ts2phc_master.h"
 #include "version.h"
 
 static void usage(char *progname)
@@ -39,7 +40,9 @@ static void usage(char *progname)
 		" -q             do not print messages to the syslog\n"
 		" -s [dev|name]  source of the PPS signal\n"
 		"                may take any of the following forms:\n"
-		"                    generic - an external 1-PPS without ToD information\n"
+		"                    generic   - an external 1-PPS without ToD information\n"
+		"                    /dev/ptp0 - a local PTP Hardware Clock (PHC)\n"
+		"                    eth0      - a local PTP Hardware Clock (PHC)\n"
 		" -v             prints the software version and exits\n"
 		"\n",
 		progname);
@@ -51,6 +54,7 @@ int main(int argc, char *argv[])
 		*slave_clock_device = NULL;
 	int c, err = 0, extts_index = 1, index;
 	struct ts2phc_slave *slave;
+	struct pps_master *master;
 	struct option *opts;
 	struct config *cfg;
 
@@ -124,6 +128,12 @@ int main(int argc, char *argv[])
 	print_set_verbose(config_get_int(cfg, NULL, "verbose"));
 	print_set_syslog(config_get_int(cfg, NULL, "use_syslog"));
 	print_set_level(config_get_int(cfg, NULL, "logging_level"));
+
+	master = pps_master_create(cfg, pps_source, CLOCK_PPS_MASTER_PHC);
+	if (!master) {
+		config_destroy(cfg);
+		return -1;
+	}
 
 	slave = ts2phc_slave_create(cfg, slave_clock_device, extts_index);
 	if (!slave) {

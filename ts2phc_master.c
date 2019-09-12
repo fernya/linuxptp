@@ -6,7 +6,7 @@
 #include "phc_pps_source.h"
 #include "ts2phc_master_private.h"
 
-struct pps_master *pps_master_create(struct config *cfg,
+struct pps_master *pps_master_create(struct config *cfg, char *dev,
 				     enum pps_master_type type)
 {
 	struct pps_master *master = NULL;
@@ -17,7 +17,7 @@ struct pps_master *pps_master_create(struct config *cfg,
 	case CLOCK_PPS_MASTER_GPSD:
 		break;
 	case CLOCK_PPS_MASTER_PHC:
-		master = phc_pps_source_create(cfg);
+		master = phc_pps_source_create(cfg, dev);
 		break;
 	case CLOCK_PPS_MASTER_UART:
 		break;

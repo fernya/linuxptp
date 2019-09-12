@@ -8,6 +8,6 @@
 
 #include "ts2phc_master.h"
 
-struct pps_master *phc_pps_source_create(struct config *cfg);
+struct pps_master *phc_pps_source_create(struct config *cfg, char *dev);
 
 #endif
