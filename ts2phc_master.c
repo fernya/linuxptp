@@ -6,26 +6,26 @@
 #include "phc_pps_source.h"
 #include "ts2phc_master_private.h"
 
-struct pps_master *pps_master_create(struct config *cfg, char *dev,
-				     enum pps_master_type type)
+struct ts2phc_master *ts2phc_master_create(struct config *cfg, char *dev,
+					   enum ts2phc_master_type type)
 {
-	struct pps_master *master = NULL;
+	struct ts2phc_master *master = NULL;
 
 	switch (type) {
-	case CLOCK_PPS_MASTER_GENERIC:
+	case TS2PHC_MASTER_GENERIC:
 		break;
-	case CLOCK_PPS_MASTER_GPSD:
+	case TS2PHC_MASTER_GPSD:
 		break;
-	case CLOCK_PPS_MASTER_PHC:
+	case TS2PHC_MASTER_PHC:
 		master = phc_pps_source_create(cfg, dev);
 		break;
-	case CLOCK_PPS_MASTER_UART:
+	case TS2PHC_MASTER_UART:
 		break;
 	}
 	return master;
 }
 
-void pps_master_destroy(struct pps_master *master)
+void ts2phc_master_destroy(struct ts2phc_master *master)
 {
 	master->destroy(master);
 }

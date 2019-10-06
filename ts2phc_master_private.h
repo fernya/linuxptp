@@ -11,8 +11,8 @@
 #include "contain.h"
 #include "ts2phc_master.h"
 
-struct pps_master {
-	void (*destroy)(struct pps_master *pps_master);
+struct ts2phc_master {
+	void (*destroy)(struct ts2phc_master *ts2phc_master);
 };
 
 #endif

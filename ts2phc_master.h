@@ -11,16 +11,16 @@ struct config;
 /**
  * Opaque type
  */
-struct pps_master_clock;
+struct ts2phc_master;
 
 /**
  * Defines the available PPS master clocks.
  */
-enum pps_master_type {
-	CLOCK_PPS_MASTER_GENERIC,
-	CLOCK_PPS_MASTER_GPSD,
-	CLOCK_PPS_MASTER_PHC,
-	CLOCK_PPS_MASTER_UART,
+enum ts2phc_master_type {
+	TS2PHC_MASTER_GENERIC,
+	TS2PHC_MASTER_GPSD,
+	TS2PHC_MASTER_PHC,
+	TS2PHC_MASTER_UART,
 };
 
 /**
@@ -30,14 +30,14 @@ enum pps_master_type {
  * @param type	The type of the clock to create.
  * @return	A pointer to a new PPS master clock on success, NULL otherwise.
  */
-struct pps_master *pps_master_create(struct config *cfg, char *dev,
-				     enum pps_master_type type);
+struct ts2phc_master *ts2phc_master_create(struct config *cfg, char *dev,
+					   enum ts2phc_master_type type);
 
 /**
  * Destroy an instance of a PPS master clock.
- * @param master Pointer to a master obtained via @ref pps_master_create().
+ * @param master Pointer to a master obtained via @ref ts2phc_master_create().
  */
-void pps_master_destroy(struct pps_master *master);
+void ts2phc_master_destroy(struct ts2phc_master *master);
 
 #endif
 

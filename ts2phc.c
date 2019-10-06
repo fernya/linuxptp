@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
 		*slave_clock_device = NULL;
 	int c, err = 0, extts_index = 1, index;
 	struct ts2phc_slave *slave;
-	struct pps_master *master;
+	struct ts2phc_master *master;
 	struct option *opts;
 	struct config *cfg;
 
@@ -129,7 +129,7 @@ int main(int argc, char *argv[])
 	print_set_syslog(config_get_int(cfg, NULL, "use_syslog"));
 	print_set_level(config_get_int(cfg, NULL, "logging_level"));
 
-	master = pps_master_create(cfg, pps_source, CLOCK_PPS_MASTER_PHC);
+	master = ts2phc_master_create(cfg, pps_source, TS2PHC_MASTER_PHC);
 	if (!master) {
 		config_destroy(cfg);
 		return -1;

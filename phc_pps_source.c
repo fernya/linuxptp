@@ -12,19 +12,19 @@
 #include "util.h"
 
 struct phc_pps_source {
-	struct pps_master master;
+	struct ts2phc_master master;
 	clockid_t clock;
 	int fd;
 };
 
-static void phc_pps_source_destroy(struct pps_master *master)
+static void phc_pps_source_destroy(struct ts2phc_master *master)
 {
 	struct phc_pps_source *s =
 		container_of(master, struct phc_pps_source, master);
 	free(s);
 }
 
-struct pps_master *phc_pps_source_create(struct config *cfg, char *dev)
+struct ts2phc_master *phc_pps_source_create(struct config *cfg, char *dev)
 {
 	struct phc_pps_source *s;
 	int junk;
