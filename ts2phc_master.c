@@ -3,8 +3,8 @@
  * @note Copyright (C) 2019 Richard Cochran <richardcochran@gmail.com>
  * @note SPDX-License-Identifier: GPL-2.0+
  */
-#include "phc_pps_source.h"
 #include "ts2phc_master_private.h"
+#include "ts2phc_phc_master.h"
 
 struct ts2phc_master *ts2phc_master_create(struct config *cfg, char *dev,
 					   enum ts2phc_master_type type)
@@ -17,7 +17,7 @@ struct ts2phc_master *ts2phc_master_create(struct config *cfg, char *dev,
 	case TS2PHC_MASTER_GPSD:
 		break;
 	case TS2PHC_MASTER_PHC:
-		master = phc_pps_source_create(cfg, dev);
+		master = ts2phc_phc_master_create(cfg, dev);
 		break;
 	case TS2PHC_MASTER_UART:
 		break;
