@@ -174,7 +174,7 @@ void ts2phc_slave_destroy(struct ts2phc_slave *slave)
 	if (ioctl(slave->fd, PTP_EXTTS_REQUEST, &extts)) {
 		pr_err("PTP_EXTTS_REQUEST failed: %m");
 	}
-	close(slave->fd);
+	posix_clock_close(slave->clk);
 	free(slave);
 }
 

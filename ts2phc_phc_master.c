@@ -21,6 +21,7 @@ static void ts2phc_phc_master_destroy(struct ts2phc_master *master)
 {
 	struct ts2phc_phc_master *s =
 		container_of(master, struct ts2phc_phc_master, master);
+	posix_clock_close(s->clock);
 	free(s);
 }
 
