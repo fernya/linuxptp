@@ -35,6 +35,7 @@
 
 #define MAX_TS2PHC_SLAVES	1
 #define NS_PER_SEC		1000000000LL
+#define SAMPLE_WEIGHT		1.0
 
 struct ts2phc_slave {
 	char *name;
@@ -102,16 +103,17 @@ static int read_extts(struct ts2phc_slave *slave, int64_t *offset,
 	return 0;
 }
 
-static void ts2phc_slave_event(struct ts2phc_slave *slave)
+static int ts2phc_slave_event(struct ts2phc_slave *slave)
 {
 	uint64_t extts_ts;
 	int64_t offset;
 	double adj;
 
 	if (read_extts(slave, &offset, &extts_ts)) {
-		return;
+		return -1;
 	}
-	adj = servo_sample(slave->servo, offset, extts_ts, 0.0, &slave->state);
+	adj = servo_sample(slave->servo, offset, extts_ts,
+			   SAMPLE_WEIGHT, &slave->state);
 
 	pr_info("%s master offset %10" PRId64 " s%d freq %+7.0f",
 		slave->name, offset, slave->state, adj);
@@ -128,6 +130,7 @@ static void ts2phc_slave_event(struct ts2phc_slave *slave)
 		clockadj_set_freq(slave->clk, -adj);
 		break;
 	}
+	return 0;
 }
 
 /* public methods */
