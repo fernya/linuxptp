@@ -3,6 +3,7 @@
  * @note Copyright (C) 2019 Richard Cochran <richardcochran@gmail.com>
  * @note SPDX-License-Identifier: GPL-2.0+
  */
+#include "ts2phc_generic_master.h"
 #include "ts2phc_master_private.h"
 #include "ts2phc_phc_master.h"
 
@@ -13,6 +14,7 @@ struct ts2phc_master *ts2phc_master_create(struct config *cfg, char *dev,
 
 	switch (type) {
 	case TS2PHC_MASTER_GENERIC:
+		master = ts2phc_generic_master_create(cfg, dev);
 		break;
 	case TS2PHC_MASTER_GPSD:
 		break;

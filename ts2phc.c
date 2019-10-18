@@ -55,6 +55,7 @@ int main(int argc, char *argv[])
 	char *config = NULL, *pps_source = NULL, *progname,
 		*slave_clock_device = NULL;
 	int c, err = 0, extts_index = DEFAULT_EXTTS_INDEX, index;
+	enum ts2phc_master_type pps_type;
 	struct ts2phc_slave *slave;
 	struct ts2phc_master *master;
 	struct option *opts;
@@ -131,7 +132,13 @@ int main(int argc, char *argv[])
 	print_set_syslog(config_get_int(cfg, NULL, "use_syslog"));
 	print_set_level(config_get_int(cfg, NULL, "logging_level"));
 
-	master = ts2phc_master_create(cfg, pps_source, TS2PHC_MASTER_PHC);
+	if (!strcasecmp(pps_source, "generic")) {
+		pps_type = TS2PHC_MASTER_GENERIC;
+	} else {
+		pps_type = TS2PHC_MASTER_PHC;
+	}
+
+	master = ts2phc_master_create(cfg, pps_source, pps_type);
 	if (!master) {
 		config_destroy(cfg);
 		return -1;
