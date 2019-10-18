@@ -60,7 +60,12 @@ static struct timespec pps_source_gettime(void)
 {
 	struct timespec now;
 	clock_gettime(CLOCK_TAI, &now);
+
+	if (now.tv_nsec > 500000000) {
+		now.tv_sec++;
+	}
 	now.tv_nsec = 0;
+
 	return now;
 }
 
@@ -107,6 +112,10 @@ static void ts2phc_slave_event(struct ts2phc_slave *slave)
 		return;
 	}
 	adj = servo_sample(slave->servo, offset, extts_ts, 0.0, &slave->state);
+
+	pr_info("%s master offset %10" PRId64 " s%d freq %+7.0f",
+		slave->name, offset, slave->state, adj);
+
 	switch (slave->state) {
 	case SERVO_UNLOCKED:
 		break;
@@ -128,7 +137,7 @@ struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, char *device,
 {
 	struct ptp_extts_request extts;
 	struct ts2phc_slave *slave;
-	int err, junk;
+	int err, fadj, junk;
 
 	slave = calloc(1, sizeof(*slave));
 	if (!slave) {
@@ -146,7 +155,14 @@ struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, char *device,
 		goto no_posix_clock;
 	}
 	slave->fd = CLOCKID_TO_FD(slave->clk);
-	slave->servo = servo_create(cfg, CLOCK_SERVO_PI, 0, 100000, 0);
+
+	fadj = (int) clockadj_get_freq(slave->clk);
+	/* Due to a bug in older kernels, the reading may silently fail
+	   and return 0. Set the frequency back to make sure fadj is
+	   the actual frequency of the clock. */
+	clockadj_set_freq(slave->clk, fadj);
+
+	slave->servo = servo_create(cfg, CLOCK_SERVO_PI, -fadj, 100000, 0);
 	if (!slave->servo) {
 		goto no_servo;
 	}
