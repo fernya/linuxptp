@@ -156,6 +156,8 @@ struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, char *device,
 	}
 	slave->fd = CLOCKID_TO_FD(slave->clk);
 
+	pr_debug("PHC slave %s has ptp index %d", device, junk);
+
 	fadj = (int) clockadj_get_freq(slave->clk);
 	/* Due to a bug in older kernels, the reading may silently fail
 	   and return 0. Set the frequency back to make sure fadj is

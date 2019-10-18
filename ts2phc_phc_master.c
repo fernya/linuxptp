@@ -85,6 +85,8 @@ struct ts2phc_master *ts2phc_phc_master_create(struct config *cfg, char *dev)
 	}
 	master->fd = CLOCKID_TO_FD(master->clkid);
 
+	pr_debug("PHC master %s has ptp index %d", dev, junk);
+
 	if (ts2phc_phc_master_activate(master)) {
 		ts2phc_phc_master_destroy(&master->master);
 		return NULL;
