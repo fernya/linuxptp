@@ -37,6 +37,7 @@
 #define NS_PER_SEC		1000000000LL
 
 struct ts2phc_slave {
+	char *name;
 	struct ptp_pin_desc pin_desc;
 	enum servo_state state;
 	struct servo *servo;
@@ -55,22 +56,20 @@ struct ts2phc_slave {
  * TODO: convert this into a proper interface that depends on the PPS
  * source device.
  */
-static uint64_t pps_source_gettime(void)
+static struct timespec pps_source_gettime(void)
 {
 	struct timespec now;
-	uint64_t result;
-
 	clock_gettime(CLOCK_TAI, &now);
-	result = now.tv_sec * NS_PER_SEC;
-
-	return result;
+	now.tv_nsec = 0;
+	return now;
 }
 
 static int read_extts(struct ts2phc_slave *slave, int64_t *offset,
 		      uint64_t *local_ts)
 {
-	uint64_t event_tns, pps_source_time;
 	struct ptp_extts_event event;
+	uint64_t event_ns, source_ns;
+	struct timespec source_ts;
 	int cnt;
 
 	cnt = read(slave->fd, &event, sizeof(event));
@@ -79,13 +78,21 @@ static int read_extts(struct ts2phc_slave *slave, int64_t *offset,
 		return -1;
 	}
 	if (event.index != slave->pin_desc.chan) {
+		pr_err("extts on unexpected channel");
 		return -1;
 	}
-	pps_source_time = pps_source_gettime();
-	event_tns = event.t.sec * NS_PER_SEC;
-	event_tns += event.t.nsec;
-	*offset = event_tns - pps_source_time;
-	*local_ts = event_tns;
+	source_ts = pps_source_gettime();
+	source_ns = source_ts.tv_sec * NS_PER_SEC + source_ts.tv_nsec;
+
+	event_ns = event.t.sec * NS_PER_SEC;
+	event_ns += event.t.nsec;
+
+	*offset = event_ns - source_ns;
+	*local_ts = event_ns;
+
+	pr_debug("%s extts index %u at %lld.%09u src %" PRIi64 ".%ld diff %" PRId64,
+		 slave->name, event.index, event.t.sec, event.t.nsec,
+		 (int64_t) source_ts.tv_sec, source_ts.tv_nsec, *offset);
 
 	return 0;
 }
@@ -127,6 +134,10 @@ struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, char *device,
 	if (!slave) {
 		return NULL;
 	}
+	slave->name = strdup(device);
+	if (!slave->name) {
+		return NULL;
+	}
 	slave->pin_desc.index = 0;
 	slave->pin_desc.func = PTP_PF_EXTTS;
 	slave->pin_desc.chan = extts_index;
@@ -160,6 +171,7 @@ no_pin_func:
 no_servo:
 	close(slave->fd);
 no_posix_clock:
+	free(slave->name);
 	free(slave);
 	return NULL;
 }
@@ -175,6 +187,7 @@ void ts2phc_slave_destroy(struct ts2phc_slave *slave)
 		pr_err("PTP_EXTTS_REQUEST failed: %m");
 	}
 	posix_clock_close(slave->clk);
+	free(slave->name);
 	free(slave);
 }
 
@@ -200,6 +213,7 @@ int ts2phc_slave_poll(struct ts2phc_slave *slaves, unsigned int n_slaves)
 			return -1;
 		}
 	} else if (!cnt) {
+		pr_debug("poll returns zero, no events");
 		return 0;
 	}
 	for (i = 0; i < n_slaves; i++) {
