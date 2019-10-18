@@ -27,6 +27,8 @@
 #include "ts2phc_master.h"
 #include "version.h"
 
+#define DEFAULT_EXTTS_INDEX	0
+
 static void usage(char *progname)
 {
 	fprintf(stderr,
@@ -35,7 +37,7 @@ static void usage(char *progname)
 		" -c [dev|name]  phc slave clock (like /dev/ptp0 or eth0)\n"
 		" -f [file]      read configuration from 'file'\n"
 		" -h             prints this message and exits\n"
-		" -i [channel]   index of event source (1)\n"
+		" -i [channel]   index on the slave clock for input events, default %d\n"
 		" -m             print messages to stdout\n"
 		" -q             do not print messages to the syslog\n"
 		" -s [dev|name]  source of the PPS signal\n"
@@ -45,14 +47,14 @@ static void usage(char *progname)
 		"                    eth0      - a local PTP Hardware Clock (PHC)\n"
 		" -v             prints the software version and exits\n"
 		"\n",
-		progname);
+		progname, DEFAULT_EXTTS_INDEX);
 }
 
 int main(int argc, char *argv[])
 {
 	char *config = NULL, *pps_source = NULL, *progname,
 		*slave_clock_device = NULL;
-	int c, err = 0, extts_index = 1, index;
+	int c, err = 0, extts_index = DEFAULT_EXTTS_INDEX, index;
 	struct ts2phc_slave *slave;
 	struct ts2phc_master *master;
 	struct option *opts;
