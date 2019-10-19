@@ -6,6 +6,8 @@
 #ifndef HAVE_TS2PHC_MASTER_H
 #define HAVE_TS2PHC_MASTER_H
 
+#include <time.h>
+
 struct config;
 
 /**
@@ -38,6 +40,14 @@ struct ts2phc_master *ts2phc_master_create(struct config *cfg, char *dev,
  * @param master Pointer to a master obtained via @ref ts2phc_master_create().
  */
 void ts2phc_master_destroy(struct ts2phc_master *master);
+
+/**
+ * Returns the time on the PPS source device at which the most recent
+ * PPS event was generated.
+ * @param master Pointer to a master obtained via @ref ts2phc_master_create().
+ * @return       Time of the last PPS event.
+ */
+struct timespec ts2phc_master_getppstime(struct ts2phc_master *master);
 
 #endif
 

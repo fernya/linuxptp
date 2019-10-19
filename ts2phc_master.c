@@ -31,3 +31,8 @@ void ts2phc_master_destroy(struct ts2phc_master *master)
 {
 	master->destroy(master);
 }
+
+struct timespec ts2phc_master_getppstime(struct ts2phc_master *master)
+{
+	return master->getppstime(master);
+}

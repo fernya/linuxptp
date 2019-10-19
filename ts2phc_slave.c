@@ -39,36 +39,13 @@
 
 struct ts2phc_slave {
 	char *name;
+	struct ts2phc_master *master;
 	struct ptp_pin_desc pin_desc;
 	enum servo_state state;
 	struct servo *servo;
 	clockid_t clk;
 	int fd;
 };
-
-/*
- * Returns the time on the PPS source device at which the most recent
- * PPS event was generated.
- *
- * This implementation assumes that the system time is approximately
- * correct, and it simply drops the nanoseconds field past the full
- * second.
- *
- * TODO: convert this into a proper interface that depends on the PPS
- * source device.
- */
-static struct timespec pps_source_gettime(void)
-{
-	struct timespec now;
-	clock_gettime(CLOCK_TAI, &now);
-
-	if (now.tv_nsec > 500000000) {
-		now.tv_sec++;
-	}
-	now.tv_nsec = 0;
-
-	return now;
-}
 
 static int read_extts(struct ts2phc_slave *slave, int64_t *offset,
 		      uint64_t *local_ts)
@@ -87,7 +64,7 @@ static int read_extts(struct ts2phc_slave *slave, int64_t *offset,
 		pr_err("extts on unexpected channel");
 		return -1;
 	}
-	source_ts = pps_source_gettime();
+	source_ts = ts2phc_master_getppstime(slave->master);
 	source_ns = source_ts.tv_sec * NS_PER_SEC + source_ts.tv_nsec;
 
 	event_ns = event.t.sec * NS_PER_SEC;
@@ -136,6 +113,7 @@ static int ts2phc_slave_event(struct ts2phc_slave *slave)
 /* public methods */
 
 struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, char *device,
+					 struct ts2phc_master *master,
 					 int extts_index)
 {
 	struct ptp_extts_request extts;
@@ -150,6 +128,7 @@ struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, char *device,
 	if (!slave->name) {
 		return NULL;
 	}
+	slave->master = master;
 	slave->pin_desc.index = 0;
 	slave->pin_desc.func = PTP_PF_EXTTS;
 	slave->pin_desc.chan = extts_index;

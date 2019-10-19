@@ -67,6 +67,18 @@ static void ts2phc_phc_master_destroy(struct ts2phc_master *master)
 	free(s);
 }
 
+static struct timespec ts2phc_phc_master_getppstime(struct ts2phc_master *m)
+{
+	struct ts2phc_phc_master *master =
+		container_of(m, struct ts2phc_phc_master, master);
+	struct timespec now;
+
+	clock_gettime(master->clkid, &now);
+	now.tv_nsec = 0;
+
+	return now;
+}
+
 struct ts2phc_master *ts2phc_phc_master_create(struct config *cfg, char *dev)
 {
 	struct ts2phc_phc_master *master;
@@ -77,6 +89,7 @@ struct ts2phc_master *ts2phc_phc_master_create(struct config *cfg, char *dev)
 		return NULL;
 	}
 	master->master.destroy = ts2phc_phc_master_destroy;
+	master->master.getppstime = ts2phc_phc_master_getppstime;
 
 	master->clkid = posix_clock_open(dev, &junk);
 	if (master->clkid == CLOCK_INVALID) {

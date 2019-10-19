@@ -20,10 +20,12 @@
 #ifndef HAVE_TS2PHC_SLAVE_H
 #define HAVE_TS2PHC_SLAVE_H
 
+#include "ts2phc_master.h"
+
 struct ts2phc_slave;
 
 struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, char *device,
-					 int extts_index);
+					 struct ts2phc_master *m, int extts_index);
 
 void ts2phc_slave_destroy(struct ts2phc_slave *slave);
 

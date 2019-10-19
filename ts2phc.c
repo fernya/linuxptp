@@ -144,8 +144,9 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	slave = ts2phc_slave_create(cfg, slave_clock_device, extts_index);
+	slave = ts2phc_slave_create(cfg, slave_clock_device, master, extts_index);
 	if (!slave) {
+		ts2phc_master_destroy(master);
 		config_destroy(cfg);
 		return -1;
 	}
@@ -156,6 +157,7 @@ int main(int argc, char *argv[])
 		}
 	}
 	ts2phc_slave_destroy(slave);
+	ts2phc_master_destroy(master);
 	config_destroy(cfg);
 
 	return err;

@@ -7,12 +7,14 @@
 #define HAVE_TS2PHC_MASTER_PRIVATE_H
 
 #include <stdint.h>
+#include <time.h>
 
 #include "contain.h"
 #include "ts2phc_master.h"
 
 struct ts2phc_master {
 	void (*destroy)(struct ts2phc_master *ts2phc_master);
+	struct timespec (*getppstime)(struct ts2phc_master *master);
 };
 
 #endif
