@@ -90,7 +90,8 @@ int main(int argc, char *argv[])
 			}
 			break;
 		case 'c':
-			if (!ts2phc_slave_add(cfg, optarg)) {
+			if (ts2phc_slave_add(cfg, optarg)) {
+				fprintf(stderr, "failed to add slave\n");
 				ts2phc_cleanup(cfg, master);
 				return -1;
 			}
@@ -123,8 +124,8 @@ int main(int argc, char *argv[])
 			return -1;
 		}
 	}
-
 	if (config && (c = config_read(config, cfg))) {
+		fprintf(stderr, "failed to read config\n");
 		ts2phc_cleanup(cfg, master);
 		return -1;
 	}
@@ -155,12 +156,14 @@ int main(int argc, char *argv[])
 
 	master = ts2phc_master_create(cfg, pps_source, pps_type);
 	if (!master) {
+		fprintf(stderr, "failed to create master\n");
 		ts2phc_cleanup(cfg, master);
 		return -1;
 	}
 	while (is_running()) {
-		err = ts2phc_slave_poll();
+		err = ts2phc_slave_poll(master);
 		if (err) {
+			pr_err("poll failed");
 			break;
 		}
 	}

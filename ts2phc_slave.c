@@ -43,7 +43,6 @@
 struct ts2phc_slave {
 	char *name;
 	STAILQ_ENTRY(ts2phc_slave) list;
-	struct ts2phc_master *master;
 	struct ptp_pin_desc pin_desc;
 	enum servo_state state;
 	struct servo *servo;
@@ -56,10 +55,13 @@ struct ts2phc_slave_array {
 	struct pollfd *pfd;
 } polling_array;
 
-static int ts2phc_slave_read_extts(struct ts2phc_slave *slave, int64_t *offset,
-				   uint64_t *local_ts);
+static int ts2phc_slave_read_extts(struct ts2phc_slave *slave,
+				   struct ts2phc_master *master,
+				   int64_t *offset, uint64_t *local_ts);
 
-static STAILQ_HEAD(slave_ifaces_head, ts2phc_slave) ts2phc_slaves;
+static STAILQ_HEAD(slave_ifaces_head, ts2phc_slave) ts2phc_slaves =
+	STAILQ_HEAD_INITIALIZER(ts2phc_slaves);
+
 static unsigned int ts2phc_n_slaves;
 
 static int ts2phc_slave_array_create(void)
@@ -183,13 +185,14 @@ static void ts2phc_slave_destroy(struct ts2phc_slave *slave)
 	free(slave);
 }
 
-static int ts2phc_slave_event(struct ts2phc_slave *slave)
+static int ts2phc_slave_event(struct ts2phc_slave *slave,
+			      struct ts2phc_master *master)
 {
 	uint64_t extts_ts;
 	int64_t offset;
 	double adj;
 
-	if (ts2phc_slave_read_extts(slave, &offset, &extts_ts)) {
+	if (ts2phc_slave_read_extts(slave, master, &offset, &extts_ts)) {
 		return -1;
 	}
 	adj = servo_sample(slave->servo, offset, extts_ts,
@@ -213,8 +216,9 @@ static int ts2phc_slave_event(struct ts2phc_slave *slave)
 	return 0;
 }
 
-static int ts2phc_slave_read_extts(struct ts2phc_slave *slave, int64_t *offset,
-				   uint64_t *local_ts)
+static int ts2phc_slave_read_extts(struct ts2phc_slave *slave,
+				   struct ts2phc_master *master,
+				   int64_t *offset, uint64_t *local_ts)
 {
 	struct ptp_extts_event event;
 	uint64_t event_ns, source_ns;
@@ -230,7 +234,7 @@ static int ts2phc_slave_read_extts(struct ts2phc_slave *slave, int64_t *offset,
 		pr_err("extts on unexpected channel");
 		return -1;
 	}
-	source_ts = ts2phc_master_getppstime(slave->master);
+	source_ts = ts2phc_master_getppstime(master);
 	source_ns = source_ts.tv_sec * NS_PER_SEC + source_ts.tv_nsec;
 
 	event_ns = event.t.sec * NS_PER_SEC;
@@ -282,7 +286,7 @@ void ts2phc_slave_cleanup(void)
 	}
 }
 
-int ts2phc_slave_poll(void)
+int ts2phc_slave_poll(struct ts2phc_master *master)
 {
 	unsigned int i;
 	int cnt;
@@ -304,7 +308,7 @@ int ts2phc_slave_poll(void)
 	}
 	for (i = 0; i < ts2phc_n_slaves; i++) {
 		if (polling_array.pfd[i].revents & (POLLIN|POLLPRI)) {
-			ts2phc_slave_event(polling_array.slave[i]);
+			ts2phc_slave_event(polling_array.slave[i], master);
 		}
 	}
 	return 0;

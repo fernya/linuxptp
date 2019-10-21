@@ -20,10 +20,12 @@
 #ifndef HAVE_TS2PHC_SLAVE_H
 #define HAVE_TS2PHC_SLAVE_H
 
+#include "ts2phc_master.h"
+
 int ts2phc_slave_add(struct config *cfg, const char *name);
 
 void ts2phc_slave_cleanup(void);
 
-int ts2phc_slave_poll(void);
+int ts2phc_slave_poll(struct ts2phc_master *master);
 
 #endif
