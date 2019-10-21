@@ -23,11 +23,20 @@
 
 #include "config.h"
 #include "print.h"
-#include "ts2phc_slave.h"
 #include "ts2phc_master.h"
+#include "ts2phc_slave.h"
 #include "version.h"
 
-#define DEFAULT_EXTTS_INDEX	0
+static void ts2phc_cleanup(struct config *cfg, struct ts2phc_master *master)
+{
+	ts2phc_slave_cleanup();
+	if (master) {
+		ts2phc_master_destroy(master);
+	}
+	if (cfg) {
+		config_destroy(cfg);
+	}
+}
 
 static void usage(char *progname)
 {
@@ -37,7 +46,6 @@ static void usage(char *progname)
 		" -c [dev|name]  phc slave clock (like /dev/ptp0 or eth0)\n"
 		" -f [file]      read configuration from 'file'\n"
 		" -h             prints this message and exits\n"
-		" -i [channel]   index on the slave clock for input events, default %d\n"
 		" -m             print messages to stdout\n"
 		" -q             do not print messages to the syslog\n"
 		" -s [dev|name]  source of the PPS signal\n"
@@ -47,24 +55,23 @@ static void usage(char *progname)
 		"                    eth0      - a local PTP Hardware Clock (PHC)\n"
 		" -v             prints the software version and exits\n"
 		"\n",
-		progname, DEFAULT_EXTTS_INDEX);
+		progname);
 }
 
 int main(int argc, char *argv[])
 {
-	char *config = NULL, *pps_source = NULL, *progname,
-		*slave_clock_device = NULL;
-	int c, err = 0, extts_index = DEFAULT_EXTTS_INDEX, index;
+	char *config = NULL, *pps_source = NULL, *progname;
+	int c, err = 0, have_slave = 0, index;
+	struct ts2phc_master *master = NULL;
 	enum ts2phc_master_type pps_type;
-	struct ts2phc_slave *slave;
-	struct ts2phc_master *master;
+	struct config *cfg = NULL;
 	struct option *opts;
-	struct config *cfg;
 
 	handle_term_signals();
 
 	cfg = config_create();
 	if (!cfg) {
+		ts2phc_cleanup(cfg, master);
 		return -1;
 	}
 
@@ -77,18 +84,19 @@ int main(int argc, char *argv[])
 		switch (c) {
 		case 0:
 			if (config_parse_option(cfg, opts[index].name, optarg)) {
-				config_destroy(cfg);
+				ts2phc_cleanup(cfg, master);
 				return -1;
 			}
 			break;
 		case 'c':
-			slave_clock_device = optarg;
+			if (!ts2phc_slave_add(cfg, optarg)) {
+				ts2phc_cleanup(cfg, master);
+				return -1;
+			}
+			have_slave = 1;
 			break;
 		case 'f':
 			config = optarg;
-			break;
-		case 'i':
-			extts_index = atoi(optarg);
 			break;
 		case 'm':
 			config_set_int(cfg, "verbose", 1);
@@ -100,29 +108,35 @@ int main(int argc, char *argv[])
 			pps_source = optarg;
 			break;
 		case 'v':
+			ts2phc_cleanup(cfg, master);
 			version_show(stdout);
-			config_destroy(cfg);
 			return 0;
 		case 'h':
+			ts2phc_cleanup(cfg, master);
 			usage(progname);
-			config_destroy(cfg);
 			return -1;
 		case '?':
 		default:
+			ts2phc_cleanup(cfg, master);
 			usage(progname);
-			config_destroy(cfg);
 			return -1;
 		}
 	}
 
 	if (config && (c = config_read(config, cfg))) {
-		config_destroy(cfg);
+		ts2phc_cleanup(cfg, master);
 		return -1;
 	}
-
-	if (!pps_source || !slave_clock_device) {
+	if (!have_slave) {
+		fprintf(stderr, "no slave clocks specified\n");
+		ts2phc_cleanup(cfg, master);
 		usage(progname);
-		config_destroy(cfg);
+		return -1;
+	}
+	if (!pps_source) {
+		fprintf(stderr, "no PPS source specified\n");
+		ts2phc_cleanup(cfg, master);
+		usage(progname);
 		return -1;
 	}
 
@@ -140,25 +154,16 @@ int main(int argc, char *argv[])
 
 	master = ts2phc_master_create(cfg, pps_source, pps_type);
 	if (!master) {
-		config_destroy(cfg);
-		return -1;
-	}
-
-	slave = ts2phc_slave_create(cfg, slave_clock_device, master, extts_index);
-	if (!slave) {
-		ts2phc_master_destroy(master);
-		config_destroy(cfg);
+		ts2phc_cleanup(cfg, master);
 		return -1;
 	}
 	while (is_running()) {
-		err = ts2phc_slave_poll(slave, 1);
+		err = ts2phc_slave_poll();
 		if (err) {
 			break;
 		}
 	}
-	ts2phc_slave_destroy(slave);
-	ts2phc_master_destroy(master);
-	config_destroy(cfg);
+	ts2phc_cleanup(cfg, master);
 
 	return err;
 }
