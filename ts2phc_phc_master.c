@@ -61,10 +61,17 @@ static int ts2phc_phc_master_activate(struct ts2phc_phc_master *master)
 
 static void ts2phc_phc_master_destroy(struct ts2phc_master *master)
 {
-	struct ts2phc_phc_master *s =
+	struct ts2phc_phc_master *m =
 		container_of(master, struct ts2phc_phc_master, master);
-	posix_clock_close(s->clkid);
-	free(s);
+	struct ptp_perout_request perout_request;
+
+	memset(&perout_request, 0, sizeof(perout_request));
+	perout_request.index = INDEX;
+	if (ioctl(m->fd, PTP_PEROUT_REQUEST, &perout_request)) {
+		pr_err("PTP_PEROUT_REQUEST failed: %m");
+	}
+	posix_clock_close(m->clkid);
+	free(m);
 }
 
 static struct timespec ts2phc_phc_master_getppstime(struct ts2phc_master *m)
