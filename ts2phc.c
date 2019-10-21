@@ -44,6 +44,7 @@ static void usage(char *progname)
 		"\n"
 		"usage: %s [options]\n\n"
 		" -c [dev|name]  phc slave clock (like /dev/ptp0 or eth0)\n"
+		"                (may be specified multiple times)\n"
 		" -f [file]      read configuration from 'file'\n"
 		" -h             prints this message and exits\n"
 		" -m             print messages to stdout\n"
