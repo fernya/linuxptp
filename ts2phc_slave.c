@@ -20,6 +20,7 @@
 #include <errno.h>
 #include <linux/ptp_clock.h>
 #include <poll.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <sys/queue.h>
@@ -37,14 +38,15 @@
 
 #define NS_PER_SEC		1000000000LL
 #define SAMPLE_WEIGHT		1.0
-#define EXTTS_INDEX		0	// todo - read from config
-#define PIN_INDEX		0	// todo - read from config
 
 struct ts2phc_slave {
 	char *name;
 	STAILQ_ENTRY(ts2phc_slave) list;
 	struct ptp_pin_desc pin_desc;
 	enum servo_state state;
+	unsigned int polarity;
+	uint32_t ignore_lower;
+	uint32_t ignore_upper;
 	struct servo *servo;
 	clockid_t clk;
 	int fd;
@@ -55,9 +57,16 @@ struct ts2phc_slave_array {
 	struct pollfd *pfd;
 } polling_array;
 
-static int ts2phc_slave_read_extts(struct ts2phc_slave *slave,
-				   struct ts2phc_master *master,
-				   int64_t *offset, uint64_t *local_ts);
+enum extts_result {
+	EXTTS_ERROR	= -1,
+	EXTTS_OK	= 0,
+	EXTTS_IGNORE	= 1,
+};
+
+static enum extts_result ts2phc_slave_read_extts(struct ts2phc_slave *slave,
+						 struct ts2phc_master *master,
+						 int64_t *offset,
+						 uint64_t *local_ts);
 
 static STAILQ_HEAD(slave_ifaces_head, ts2phc_slave) ts2phc_slaves =
 	STAILQ_HEAD_INITIALIZER(ts2phc_slaves);
@@ -106,9 +115,9 @@ static void ts2phc_slave_array_destroy(void)
 
 static struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, const char *device)
 {
+	int err, fadj, junk, pulsewidth;
 	struct ptp_extts_request extts;
 	struct ts2phc_slave *slave;
-	int err, fadj, junk;
 
 	slave = calloc(1, sizeof(*slave));
 	if (!slave) {
@@ -121,9 +130,16 @@ static struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, const char *
 		free(slave);
 		return NULL;
 	}
-	slave->pin_desc.index = PIN_INDEX;
+	slave->pin_desc.index = config_get_int(cfg, device, "ts2phc.pin_index");
 	slave->pin_desc.func = PTP_PF_EXTTS;
-	slave->pin_desc.chan = EXTTS_INDEX;
+	slave->pin_desc.chan = config_get_int(cfg, device, "ts2phc.extts_index");
+	slave->polarity = config_get_int(cfg, device, "ts2phc.extts_polarity");
+
+	pulsewidth = config_get_int(cfg, device, "ts2phc.pulsewidth");
+	pulsewidth /= 2;
+	slave->ignore_upper = 1000000000 - pulsewidth;
+	slave->ignore_lower = pulsewidth;
+
 	slave->clk = posix_clock_open(device, &junk);
 	if (slave->clk == CLOCK_INVALID) {
 		pr_err("failed to open clock");
@@ -145,14 +161,18 @@ static struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, const char *
 		goto no_servo;
 	}
 	servo_sync_interval(slave->servo, 1.0);
+
+	// TODO - only set if ioctl is supported by device
 	err = ioctl(slave->fd, PTP_PIN_SETFUNC, &slave->pin_desc);
 	if (err < 0) {
 		pr_err("PTP_PIN_SETFUNC request failed: %m");
 		goto no_pin_func;
 	}
+
+	// TODO - disable extts first, then read out fifo, then enable
 	memset(&extts, 0, sizeof(extts));
 	extts.index = slave->pin_desc.chan;
-	extts.flags = PTP_RISING_EDGE | PTP_ENABLE_FEATURE;
+	extts.flags = slave->polarity | PTP_ENABLE_FEATURE;
 	err = ioctl(slave->fd, PTP_EXTTS_REQUEST, &extts);
 	if (err < 0) {
 		pr_err("PTP_EXTTS_REQUEST failed: %m");
@@ -188,12 +208,19 @@ static void ts2phc_slave_destroy(struct ts2phc_slave *slave)
 static int ts2phc_slave_event(struct ts2phc_slave *slave,
 			      struct ts2phc_master *master)
 {
+	enum extts_result result;
 	uint64_t extts_ts;
 	int64_t offset;
 	double adj;
 
-	if (ts2phc_slave_read_extts(slave, master, &offset, &extts_ts)) {
+	result = ts2phc_slave_read_extts(slave, master, &offset, &extts_ts);
+	switch (result) {
+	case EXTTS_ERROR:
 		return -1;
+	case EXTTS_OK:
+		break;
+	case EXTTS_IGNORE:
+		return 0;
 	}
 	adj = servo_sample(slave->servo, offset, extts_ts,
 			   SAMPLE_WEIGHT, &slave->state);
@@ -216,9 +243,10 @@ static int ts2phc_slave_event(struct ts2phc_slave *slave,
 	return 0;
 }
 
-static int ts2phc_slave_read_extts(struct ts2phc_slave *slave,
-				   struct ts2phc_master *master,
-				   int64_t *offset, uint64_t *local_ts)
+static enum extts_result ts2phc_slave_read_extts(struct ts2phc_slave *slave,
+						 struct ts2phc_master *master,
+						 int64_t *offset,
+						 uint64_t *local_ts)
 {
 	struct ptp_extts_event event;
 	uint64_t event_ns, source_ns;
@@ -228,11 +256,11 @@ static int ts2phc_slave_read_extts(struct ts2phc_slave *slave,
 	cnt = read(slave->fd, &event, sizeof(event));
 	if (cnt != sizeof(event)) {
 		pr_err("read extts event failed: %m");
-		return -1;
+		return EXTTS_ERROR;
 	}
 	if (event.index != slave->pin_desc.chan) {
 		pr_err("extts on unexpected channel");
-		return -1;
+		return EXTTS_ERROR;
 	}
 	source_ts = ts2phc_master_getppstime(master);
 	source_ns = source_ts.tv_sec * NS_PER_SEC + source_ts.tv_nsec;
@@ -247,7 +275,12 @@ static int ts2phc_slave_read_extts(struct ts2phc_slave *slave,
 		 slave->name, event.index, event.t.sec, event.t.nsec,
 		 (int64_t) source_ts.tv_sec, source_ts.tv_nsec, *offset);
 
-	return 0;
+	if (slave->polarity == (PTP_RISING_EDGE | PTP_FALLING_EDGE) &&
+	    event.t.nsec > slave->ignore_lower &&
+	    event.t.nsec < slave->ignore_upper) {
+		return EXTTS_IGNORE;
+	}
+	return EXTTS_OK;
 }
 
 /* public methods */
