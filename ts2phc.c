@@ -47,6 +47,7 @@ static void usage(char *progname)
 		"                (may be specified multiple times)\n"
 		" -f [file]      read configuration from 'file'\n"
 		" -h             prints this message and exits\n"
+		" -l [num]       set the logging level to 'num'\n"
 		" -m             print messages to stdout\n"
 		" -q             do not print messages to the syslog\n"
 		" -s [dev|name]  source of the PPS signal\n"
@@ -62,10 +63,11 @@ static void usage(char *progname)
 int main(int argc, char *argv[])
 {
 	char *config = NULL, *pps_source = NULL, *progname;
-	int c, err = 0, have_slave = 0, index;
+	int c, err = 0, have_slave = 0, index, print_level;
 	struct ts2phc_master *master = NULL;
 	enum ts2phc_master_type pps_type;
 	struct config *cfg = NULL;
+	struct interface *iface;
 	struct option *opts;
 
 	handle_term_signals();
@@ -81,7 +83,7 @@ int main(int argc, char *argv[])
 	/* Process the command line arguments. */
 	progname = strrchr(argv[0], '/');
 	progname = progname ? 1+progname : argv[0];
-	while (EOF != (c = getopt_long(argc, argv, "c:f:hi:mqs:v", opts, &index))) {
+	while (EOF != (c = getopt_long(argc, argv, "c:f:hi:l:mqs:v", opts, &index))) {
 		switch (c) {
 		case 0:
 			if (config_parse_option(cfg, opts[index].name, optarg)) {
@@ -100,11 +102,22 @@ int main(int argc, char *argv[])
 		case 'f':
 			config = optarg;
 			break;
+		case 'l':
+			if (get_arg_val_i(c, optarg, &print_level,
+					  PRINT_LEVEL_MIN, PRINT_LEVEL_MAX)) {
+				ts2phc_cleanup(cfg, master);
+				return -1;
+			}
+			config_set_int(cfg, "logging_level", print_level);
+			print_set_level(print_level);
+			break;
 		case 'm':
 			config_set_int(cfg, "verbose", 1);
+			print_set_verbose(1);
 			break;
 		case 'q':
 			config_set_int(cfg, "use_syslog", 0);
+			print_set_syslog(0);
 			break;
 		case 's':
 			pps_source = optarg;
@@ -129,6 +142,26 @@ int main(int argc, char *argv[])
 		ts2phc_cleanup(cfg, master);
 		return -1;
 	}
+	print_set_progname(progname);
+	print_set_tag(config_get_string(cfg, NULL, "message_tag"));
+	print_set_verbose(config_get_int(cfg, NULL, "verbose"));
+	print_set_syslog(config_get_int(cfg, NULL, "use_syslog"));
+	print_set_level(config_get_int(cfg, NULL, "logging_level"));
+
+	STAILQ_FOREACH(iface, &cfg->interfaces, list) {
+		if (1 == config_get_int(cfg, iface->name, "ts2phc.master")) {
+			if (!pps_source) {
+				pps_source = iface->name;
+			}
+		} else if (1 == config_get_int(cfg, iface->name, "ts2phc.slave")) {
+			if (ts2phc_slave_add(cfg, iface->name)) {
+				fprintf(stderr, "failed to add slave\n");
+				ts2phc_cleanup(cfg, master);
+				return -1;
+			}
+			have_slave = 1;
+		}
+	}
 	if (!have_slave) {
 		fprintf(stderr, "no slave clocks specified\n");
 		ts2phc_cleanup(cfg, master);
@@ -141,12 +174,6 @@ int main(int argc, char *argv[])
 		usage(progname);
 		return -1;
 	}
-
-	print_set_progname(progname);
-	print_set_tag(config_get_string(cfg, NULL, "message_tag"));
-	print_set_verbose(config_get_int(cfg, NULL, "verbose"));
-	print_set_syslog(config_get_int(cfg, NULL, "use_syslog"));
-	print_set_level(config_get_int(cfg, NULL, "logging_level"));
 
 	if (!strcasecmp(pps_source, "generic")) {
 		pps_type = TS2PHC_MASTER_GENERIC;

@@ -25,21 +25,13 @@ static void ts2phc_generic_master_destroy(struct ts2phc_master *master)
 
 /*
  * Returns the time on the PPS source device at which the most recent
- * PPS event was generated.
- *
- * This implementation assumes that the system time is approximately
- * correct, and it simply rounds to the nearest full second.
+ * PPS event was generated.  This implementation assumes that the
+ * system time is approximately correct.
  */
 static struct timespec ts2phc_generic_master_getppstime(struct ts2phc_master *m)
 {
 	struct timespec now;
 	clock_gettime(CLOCK_TAI, &now);
-
-	if (now.tv_nsec > 500000000) {
-		now.tv_sec++;
-	}
-	now.tv_nsec = 0;
-
 	return now;
 }
 

@@ -63,10 +63,10 @@ enum extts_result {
 	EXTTS_IGNORE	= 1,
 };
 
-static enum extts_result ts2phc_slave_read_extts(struct ts2phc_slave *slave,
-						 struct ts2phc_master *master,
-						 int64_t *offset,
-						 uint64_t *local_ts);
+static enum extts_result ts2phc_slave_offset(struct ts2phc_slave *slave,
+					     struct ts2phc_master *master,
+					     int64_t *offset,
+					     uint64_t *local_ts);
 
 static STAILQ_HEAD(slave_ifaces_head, ts2phc_slave) ts2phc_slaves =
 	STAILQ_HEAD_INITIALIZER(ts2phc_slaves);
@@ -213,7 +213,7 @@ static int ts2phc_slave_event(struct ts2phc_slave *slave,
 	int64_t offset;
 	double adj;
 
-	result = ts2phc_slave_read_extts(slave, master, &offset, &extts_ts);
+	result = ts2phc_slave_offset(slave, master, &offset, &extts_ts);
 	switch (result) {
 	case EXTTS_ERROR:
 		return -1;
@@ -243,10 +243,10 @@ static int ts2phc_slave_event(struct ts2phc_slave *slave,
 	return 0;
 }
 
-static enum extts_result ts2phc_slave_read_extts(struct ts2phc_slave *slave,
-						 struct ts2phc_master *master,
-						 int64_t *offset,
-						 uint64_t *local_ts)
+static enum extts_result ts2phc_slave_offset(struct ts2phc_slave *slave,
+					     struct ts2phc_master *master,
+					     int64_t *offset,
+					     uint64_t *local_ts)
 {
 	struct ptp_extts_event event;
 	uint64_t event_ns, source_ns;
@@ -263,11 +263,23 @@ static enum extts_result ts2phc_slave_read_extts(struct ts2phc_slave *slave,
 		return EXTTS_ERROR;
 	}
 	source_ts = ts2phc_master_getppstime(master);
-	source_ns = source_ts.tv_sec * NS_PER_SEC + source_ts.tv_nsec;
-
 	event_ns = event.t.sec * NS_PER_SEC;
 	event_ns += event.t.nsec;
 
+	if (slave->polarity == (PTP_RISING_EDGE | PTP_FALLING_EDGE) &&
+	    source_ts.tv_nsec > slave->ignore_lower &&
+	    source_ts.tv_nsec < slave->ignore_upper) {
+
+		pr_debug("%s SKIP extts index %u at %lld.%09u src %" PRIi64 ".%ld",
+		 slave->name, event.index, event.t.sec, event.t.nsec,
+		 (int64_t) source_ts.tv_sec, source_ts.tv_nsec);
+
+		return EXTTS_IGNORE;
+	}
+	if (source_ts.tv_nsec > 500000000) {
+		source_ts.tv_sec++;
+	}
+	source_ns = source_ts.tv_sec * NS_PER_SEC;
 	*offset = event_ns - source_ns;
 	*local_ts = event_ns;
 
@@ -275,11 +287,6 @@ static enum extts_result ts2phc_slave_read_extts(struct ts2phc_slave *slave,
 		 slave->name, event.index, event.t.sec, event.t.nsec,
 		 (int64_t) source_ts.tv_sec, source_ts.tv_nsec, *offset);
 
-	if (slave->polarity == (PTP_RISING_EDGE | PTP_FALLING_EDGE) &&
-	    event.t.nsec > slave->ignore_lower &&
-	    event.t.nsec < slave->ignore_upper) {
-		return EXTTS_IGNORE;
-	}
 	return EXTTS_OK;
 }
 

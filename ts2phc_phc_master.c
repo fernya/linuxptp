@@ -17,7 +17,7 @@
 #define PIN_INDEX	0
 #define PIN_FUNC	PTP_PF_PEROUT
 #define INDEX		0
-#define ONE_SECOND	2 // hack, the i210 slave time stamps both edges!
+#define ONE_SECOND	1
 
 struct ts2phc_phc_master {
 	struct ts2phc_master master;
@@ -79,10 +79,7 @@ static struct timespec ts2phc_phc_master_getppstime(struct ts2phc_master *m)
 	struct ts2phc_phc_master *master =
 		container_of(m, struct ts2phc_phc_master, master);
 	struct timespec now;
-
 	clock_gettime(master->clkid, &now);
-	now.tv_nsec = 0;
-
 	return now;
 }
 
