@@ -35,7 +35,8 @@ static struct timespec ts2phc_generic_master_getppstime(struct ts2phc_master *m)
 	return now;
 }
 
-struct ts2phc_master *ts2phc_generic_master_create(struct config *cfg, char *dev)
+struct ts2phc_master *ts2phc_generic_master_create(struct config *cfg,
+						   const char *dev)
 {
 	struct ts2phc_generic_master *master;
 

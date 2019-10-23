@@ -8,6 +8,7 @@
 #include <string.h>
 #include <sys/ioctl.h>
 
+#include "config.h"
 #include "print.h"
 #include "missing.h"
 #include "ts2phc_master_private.h"
@@ -25,16 +26,18 @@ struct ts2phc_phc_master {
 	int fd;
 };
 
-static int ts2phc_phc_master_activate(struct ts2phc_phc_master *master)
+static int ts2phc_phc_master_activate(struct config *cfg, const char *dev,
+				      struct ts2phc_phc_master *master)
 {
 	struct ptp_perout_request perout_request;
 	struct ptp_pin_desc desc;
 	struct timespec ts;
 
 	memset(&desc, 0, sizeof(desc));
-	desc.index = PIN_INDEX;
+
+	desc.index = config_get_int(cfg, dev, "ts2phc.pin_index");
 	desc.func = PIN_FUNC;
-	desc.chan = INDEX;
+	desc.chan = config_get_int(cfg, dev, "ts2phc.extts_index");
 
 	if (ioctl(master->fd, PTP_PIN_SETFUNC, &desc)) {
 		pr_err("PTP_PIN_SETFUNC failed: %m");
@@ -83,7 +86,7 @@ static struct timespec ts2phc_phc_master_getppstime(struct ts2phc_master *m)
 	return now;
 }
 
-struct ts2phc_master *ts2phc_phc_master_create(struct config *cfg, char *dev)
+struct ts2phc_master *ts2phc_phc_master_create(struct config *cfg, const char *dev)
 {
 	struct ts2phc_phc_master *master;
 	int junk;
@@ -104,7 +107,7 @@ struct ts2phc_master *ts2phc_phc_master_create(struct config *cfg, char *dev)
 
 	pr_debug("PHC master %s has ptp index %d", dev, junk);
 
-	if (ts2phc_phc_master_activate(master)) {
+	if (ts2phc_phc_master_activate(cfg, dev, master)) {
 		ts2phc_phc_master_destroy(&master->master);
 		return NULL;
 	}

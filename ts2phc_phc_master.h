@@ -8,6 +8,7 @@
 
 #include "ts2phc_master.h"
 
-struct ts2phc_master *ts2phc_phc_master_create(struct config *cfg, char *dev);
+struct ts2phc_master *ts2phc_phc_master_create(struct config *cfg,
+					       const char *dev);
 
 #endif

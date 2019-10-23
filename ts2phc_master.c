@@ -7,7 +7,7 @@
 #include "ts2phc_master_private.h"
 #include "ts2phc_phc_master.h"
 
-struct ts2phc_master *ts2phc_master_create(struct config *cfg, char *dev,
+struct ts2phc_master *ts2phc_master_create(struct config *cfg, const char *dev,
 					   enum ts2phc_master_type type)
 {
 	struct ts2phc_master *master = NULL;

@@ -32,7 +32,7 @@ enum ts2phc_master_type {
  * @param type	The type of the clock to create.
  * @return	A pointer to a new PPS master clock on success, NULL otherwise.
  */
-struct ts2phc_master *ts2phc_master_create(struct config *cfg, char *dev,
+struct ts2phc_master *ts2phc_master_create(struct config *cfg, const char *dev,
 					   enum ts2phc_master_type type);
 
 /**
