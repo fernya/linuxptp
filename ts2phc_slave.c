@@ -184,9 +184,9 @@ static struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, const char *
 
 	pr_debug("PHC slave %s has ptp index %d", device, junk);
 
-	err = ioctl(slave->fd, PTP_CLOCK_GETCAPS, caps);
+	err = ioctl(slave->fd, PTP_CLOCK_GETCAPS, &caps);
 	if (err) {
-		pr_err("PTP_CLOCK_GETCAPS");
+		pr_err("PTP_CLOCK_GETCAPS failed: %m");
 		goto no_caps;
 	}
 
@@ -222,14 +222,6 @@ static struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, const char *
 		pr_err("PTP_EXTTS_REQUEST failed: %m");
 	}
 	if (ts2phc_slave_clear_fifo(slave)) {
-		goto no_ext_ts;
-	}
-
-	/* and finally enable time stamping. */
-	extts.flags = slave->polarity | PTP_ENABLE_FEATURE;
-	err = ioctl(slave->fd, PTP_EXTTS_REQUEST, &extts);
-	if (err < 0) {
-		pr_err("PTP_EXTTS_REQUEST failed: %m");
 		goto no_ext_ts;
 	}
 
@@ -366,6 +358,26 @@ int ts2phc_slave_add(struct config *cfg, const char *name)
 	STAILQ_INSERT_TAIL(&ts2phc_slaves, slave, list);
 	ts2phc_n_slaves++;
 
+	return 0;
+}
+
+int ts2phc_slave_arm(void)
+{
+	struct ptp_extts_request extts;
+	struct ts2phc_slave *slave;
+	int err;
+
+	memset(&extts, 0, sizeof(extts));
+
+	STAILQ_FOREACH(slave, &ts2phc_slaves, list) {
+		extts.index = slave->pin_desc.chan;
+		extts.flags = slave->polarity | PTP_ENABLE_FEATURE;
+		err = ioctl(slave->fd, PTP_EXTTS_REQUEST, &extts);
+		if (err < 0) {
+			pr_err("PTP_EXTTS_REQUEST failed: %m");
+			return -1;
+		}
+	}
 	return 0;
 }
 

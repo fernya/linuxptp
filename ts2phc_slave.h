@@ -24,6 +24,8 @@
 
 int ts2phc_slave_add(struct config *cfg, const char *name);
 
+int ts2phc_slave_arm(void);
+
 void ts2phc_slave_cleanup(void);
 
 int ts2phc_slave_poll(struct ts2phc_master *master);

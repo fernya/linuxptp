@@ -174,19 +174,23 @@ int main(int argc, char *argv[])
 		usage(progname);
 		return -1;
 	}
-
+	if (ts2phc_slave_arm()) {
+		fprintf(stderr, "failed to arm slaves\n");
+		ts2phc_cleanup(cfg, master);
+		return -1;
+	}
 	if (!strcasecmp(pps_source, "generic")) {
 		pps_type = TS2PHC_MASTER_GENERIC;
 	} else {
 		pps_type = TS2PHC_MASTER_PHC;
 	}
-
 	master = ts2phc_master_create(cfg, pps_source, pps_type);
 	if (!master) {
 		fprintf(stderr, "failed to create master\n");
 		ts2phc_cleanup(cfg, master);
 		return -1;
 	}
+
 	while (is_running()) {
 		err = ts2phc_slave_poll(master);
 		if (err) {
@@ -194,7 +198,7 @@ int main(int argc, char *argv[])
 			break;
 		}
 	}
-	ts2phc_cleanup(cfg, master);
 
+	ts2phc_cleanup(cfg, master);
 	return err;
 }
