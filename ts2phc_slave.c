@@ -38,6 +38,7 @@
 
 #define NS_PER_SEC		1000000000LL
 #define SAMPLE_WEIGHT		1.0
+#define SERVO_SYNC_INTERVAL	1.0
 
 struct ts2phc_slave {
 	char *name;
@@ -113,8 +114,42 @@ static void ts2phc_slave_array_destroy(void)
 	polling_array.pfd = NULL;
 }
 
+static int ts2phc_slave_clear_fifo(struct ts2phc_slave *slave)
+{
+	struct pollfd pfd = {
+		.events = POLLIN | POLLPRI,
+		.fd = slave->fd,
+	};
+	struct ptp_extts_event event;
+	int cnt, size;
+
+	while (1) {
+		cnt = poll(&pfd, 1, 0);
+		if (cnt < 0) {
+			if (EINTR == errno) {
+				continue;
+			} else {
+				pr_emerg("poll failed");
+				return -1;
+			}
+		} else if (!cnt) {
+			break;
+		}
+		size = read(pfd.fd, &event, sizeof(event));
+		if (size != sizeof(event)) {
+			pr_err("read failed");
+			return -1;
+		}
+		pr_debug("%s SKIP extts index %u at %lld.%09u",
+			 slave->name, event.index, event.t.sec, event.t.nsec);
+	}
+
+	return 0;
+}
+
 static struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, const char *device)
 {
+	struct ptp_clock_caps caps = { 0 };
 	int err, fadj, junk, pulsewidth;
 	struct ptp_extts_request extts;
 	struct ts2phc_slave *slave;
@@ -149,39 +184,60 @@ static struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, const char *
 
 	pr_debug("PHC slave %s has ptp index %d", device, junk);
 
+	err = ioctl(slave->fd, PTP_CLOCK_GETCAPS, caps);
+	if (err) {
+		pr_err("PTP_CLOCK_GETCAPS");
+		goto no_caps;
+	}
+
 	fadj = (int) clockadj_get_freq(slave->clk);
 	/* Due to a bug in older kernels, the reading may silently fail
 	   and return 0. Set the frequency back to make sure fadj is
 	   the actual frequency of the clock. */
 	clockadj_set_freq(slave->clk, fadj);
 
-	slave->servo = servo_create(cfg, CLOCK_SERVO_PI, -fadj, 100000, 0);
+	slave->servo = servo_create(cfg, CLOCK_SERVO_PI, -fadj, caps.max_adj, 0);
 	if (!slave->servo) {
 		pr_err("failed to create servo");
 		goto no_servo;
 	}
-	servo_sync_interval(slave->servo, 1.0);
+	servo_sync_interval(slave->servo, SERVO_SYNC_INTERVAL);
 
-	// TODO - only set if ioctl is supported by device
-	err = ioctl(slave->fd, PTP_PIN_SETFUNC, &slave->pin_desc);
-	if (err < 0) {
-		pr_err("PTP_PIN_SETFUNC request failed: %m");
-		goto no_pin_func;
+	if (caps.n_pins > 0) {
+		err = ioctl(slave->fd, PTP_PIN_SETFUNC, &slave->pin_desc);
+		if (err < 0) {
+			pr_err("PTP_PIN_SETFUNC request failed: %m");
+			goto no_pin_func;
+		}
 	}
 
-	// TODO - disable extts first, then read out fifo, then enable
+	/*
+	 * Disable external time stamping, and then read out any stale
+	 * time stamps.
+	 */
 	memset(&extts, 0, sizeof(extts));
 	extts.index = slave->pin_desc.chan;
+	extts.flags = 0;
+	if (ioctl(slave->fd, PTP_EXTTS_REQUEST, &extts)) {
+		pr_err("PTP_EXTTS_REQUEST failed: %m");
+	}
+	if (ts2phc_slave_clear_fifo(slave)) {
+		goto no_ext_ts;
+	}
+
+	/* and finally enable time stamping. */
 	extts.flags = slave->polarity | PTP_ENABLE_FEATURE;
 	err = ioctl(slave->fd, PTP_EXTTS_REQUEST, &extts);
 	if (err < 0) {
 		pr_err("PTP_EXTTS_REQUEST failed: %m");
 		goto no_ext_ts;
 	}
+
 	return slave;
 no_ext_ts:
 no_pin_func:
 	servo_destroy(slave->servo);
+no_caps:
 no_servo:
 	close(slave->fd);
 no_posix_clock:
