@@ -22,6 +22,7 @@
 
 struct ts2phc_phc_master {
 	struct ts2phc_master master;
+	int32_t output_latency;
 	clockid_t clkid;
 	int fd;
 };
@@ -35,7 +36,12 @@ static int ts2phc_phc_master_activate(struct config *cfg, const char *dev,
 
 	memset(&desc, 0, sizeof(desc));
 
-	desc.index = config_get_int(cfg, dev, "ts2phc.pin_index");
+	if (-1 != config_get_int(cfg, dev, "ts2phc.function_test_pin")) {
+		desc.index = config_get_int(cfg, dev, "ts2phc.function_test_pin");
+	} else {
+		desc.index = config_get_int(cfg, dev, "ts2phc.pin_index");
+	}
+	
 	desc.func = PIN_FUNC;
 	desc.chan = config_get_int(cfg, dev, "ts2phc.extts_index");
 
@@ -48,12 +54,23 @@ static int ts2phc_phc_master_activate(struct config *cfg, const char *dev,
 		perror("clock_gettime");
 		return -1;
 	}
+
 	memset(&perout_request, 0, sizeof(perout_request));
 	perout_request.index = INDEX;
-	perout_request.start.sec = ts.tv_sec + 2;
-	perout_request.start.nsec = 0;
+	if(!master->output_latency) {
+		perout_request.start.sec = ts.tv_sec + 2;
+		perout_request.start.nsec = 0;
+	} else if (master->output_latency > 0) {
+		perout_request.start.sec = ts.tv_sec + 1;
+		perout_request.start.nsec = (NS_PER_SEC - master->output_latency) % NS_PER_SEC;
+	} else /* if (master->output_latency < 0) */ {
+		perout_request.start.sec = ts.tv_sec + 2;
+		perout_request.start.nsec = (NS_PER_SEC - master->output_latency) % NS_PER_SEC;
+	}
+	
 	perout_request.period.sec = ONE_SECOND;
 	perout_request.period.nsec = 0;
+	perout_request.flags = PTP_ENABLE_FEATURE;
 
 	if (ioctl(master->fd, PTP_PEROUT_REQUEST, &perout_request)) {
 		pr_err("PTP_PEROUT_REQUEST failed: %m");
@@ -97,6 +114,7 @@ struct ts2phc_master *ts2phc_phc_master_create(struct config *cfg, const char *d
 	}
 	master->master.destroy = ts2phc_phc_master_destroy;
 	master->master.getppstime = ts2phc_phc_master_getppstime;
+	master->output_latency = config_get_int(cfg, dev, "ts2phc.output_latency");
 
 	master->clkid = posix_clock_open(dev, &junk);
 	if (master->clkid == CLOCK_INVALID) {

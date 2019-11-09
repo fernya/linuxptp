@@ -35,6 +35,7 @@ struct ts2phc_slave {
 	unsigned int polarity;
 	uint32_t ignore_lower;
 	uint32_t ignore_upper;
+	int32_t input_latency;
 	struct servo *servo;
 	clockid_t clk;
 	int fd;
@@ -156,6 +157,7 @@ static struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, const char *
 	slave->pin_desc.func = PTP_PF_EXTTS;
 	slave->pin_desc.chan = config_get_int(cfg, device, "ts2phc.extts_index");
 	slave->polarity = config_get_int(cfg, device, "ts2phc.extts_polarity");
+	slave->input_latency = config_get_int(cfg, device, "ts2phc.input_latency");
 
 	pulsewidth = config_get_int(cfg, device, "ts2phc.pulsewidth");
 	pulsewidth /= 2;
@@ -316,7 +318,8 @@ static enum extts_result ts2phc_slave_offset(struct ts2phc_slave *slave,
 	}
 	source_ns = source_ts.tv_sec * NS_PER_SEC;
 	*offset = event_ns - source_ns;
-	*local_ts = event_ns;
+	*offset -= slave->input_latency;
+	*local_ts = event_ns - slave->input_latency;
 
 	pr_debug("%s extts index %u at %lld.%09u src %" PRIi64 ".%ld diff %" PRId64,
 		 slave->name, event.index, event.t.sec, event.t.nsec,
