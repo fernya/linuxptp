@@ -31,8 +31,10 @@ static int ts2phc_phc_master_activate(struct config *cfg, const char *dev,
 				      struct ts2phc_phc_master *master)
 {
 	struct ptp_perout_request perout_request;
-	struct ptp_pin_desc desc;
 	struct timespec ts;
+
+#ifdef PTP_PIN_SETFUNC
+	struct ptp_pin_desc desc;
 
 	memset(&desc, 0, sizeof(desc));
 
@@ -49,7 +51,7 @@ static int ts2phc_phc_master_activate(struct config *cfg, const char *dev,
 		pr_err("PTP_PIN_SETFUNC failed: %m");
 		return -1;
 	}
-
+#endif
 	if (clock_gettime(master->clkid, &ts)) {
 		perror("clock_gettime");
 		return -1;

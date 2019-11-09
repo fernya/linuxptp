@@ -31,7 +31,11 @@ static void ts2phc_generic_master_destroy(struct ts2phc_master *master)
 static struct timespec ts2phc_generic_master_getppstime(struct ts2phc_master *m)
 {
 	struct timespec now;
+#ifndef CLOCK_TAI
+	clock_gettime(CLOCK_MONOTONIC, &now);
+#else
 	clock_gettime(CLOCK_TAI, &now);
+#endif
 	return now;
 }
 

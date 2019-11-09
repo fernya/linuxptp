@@ -30,7 +30,9 @@
 struct ts2phc_slave {
 	char *name;
 	STAILQ_ENTRY(ts2phc_slave) list;
+#ifdef PTP_PIN_SETFUNC
 	struct ptp_pin_desc pin_desc;
+#endif //PTP_PIN_SETFUNC
 	enum servo_state state;
 	unsigned int polarity;
 	uint32_t ignore_lower;
@@ -153,9 +155,12 @@ static struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, const char *
 		free(slave);
 		return NULL;
 	}
+
+#ifdef PTP_PIN_SETFUNC
 	slave->pin_desc.index = config_get_int(cfg, device, "ts2phc.pin_index");
 	slave->pin_desc.func = PTP_PF_EXTTS;
 	slave->pin_desc.chan = config_get_int(cfg, device, "ts2phc.extts_index");
+#endif //PTP_PIN_SETFUNC
 	slave->polarity = config_get_int(cfg, device, "ts2phc.extts_polarity");
 	slave->input_latency = config_get_int(cfg, device, "ts2phc.input_latency");
 
@@ -191,7 +196,7 @@ static struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, const char *
 		goto no_servo;
 	}
 	servo_sync_interval(slave->servo, SERVO_SYNC_INTERVAL);
-
+#ifdef PTP_PIN_SETFUNC
 	if (caps.n_pins > 0) {
 		err = ioctl(slave->fd, PTP_PIN_SETFUNC, &slave->pin_desc);
 		if (err < 0) {
@@ -199,13 +204,17 @@ static struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, const char *
 			goto no_pin_func;
 		}
 	}
-
+#endif //PTP_PIN_SETFUNC
 	/*
 	 * Disable external time stamping, and then read out any stale
 	 * time stamps.
 	 */
 	memset(&extts, 0, sizeof(extts));
+#ifdef PTP_PIN_SETFUNC
 	extts.index = slave->pin_desc.chan;
+#else
+	extts.index = 0; // TODO configuration item
+#endif
 	extts.flags = 0;
 	if (ioctl(slave->fd, PTP_EXTTS_REQUEST, &extts)) {
 		pr_err("PTP_EXTTS_REQUEST failed: %m");
@@ -216,7 +225,9 @@ static struct ts2phc_slave *ts2phc_slave_create(struct config *cfg, const char *
 
 	return slave;
 no_ext_ts:
+#ifdef PTP_PIN_SETFUNC
 no_pin_func:
+#endif //PTP_PIN_SETFUNC
 	servo_destroy(slave->servo);
 no_caps:
 no_servo:
@@ -232,7 +243,11 @@ static void ts2phc_slave_destroy(struct ts2phc_slave *slave)
 	struct ptp_extts_request extts;
 
 	memset(&extts, 0, sizeof(extts));
+#ifdef PTP_PIN_SETFUNC
 	extts.index = slave->pin_desc.chan;
+#else
+	extts.index = 0; // TODO config item
+#endif //PTP_PIN_SETFUNC
 	extts.flags = 0;
 	if (ioctl(slave->fd, PTP_EXTTS_REQUEST, &extts)) {
 		pr_err("PTP_EXTTS_REQUEST failed: %m");
@@ -289,13 +304,20 @@ static enum extts_result ts2phc_slave_offset(struct ts2phc_slave *slave,
 	uint64_t event_ns, source_ns;
 	struct timespec source_ts;
 	int cnt;
+	int expected_chan;
+
+#ifdef PTP_PIN_SETFUNC
+	expected_chan = slave->pin_desc.chan;
+#else
+	expected_chan = 0;
+#endif //PTP_PIN_SETFUNC
 
 	cnt = read(slave->fd, &event, sizeof(event));
 	if (cnt != sizeof(event)) {
 		pr_err("read extts event failed: %m");
 		return EXTTS_ERROR;
 	}
-	if (event.index != slave->pin_desc.chan) {
+	if (event.index != expected_chan) {
 		pr_err("extts on unexpected channel");
 		return EXTTS_ERROR;
 	}
@@ -360,7 +382,11 @@ int ts2phc_slave_arm(void)
 	memset(&extts, 0, sizeof(extts));
 
 	STAILQ_FOREACH(slave, &ts2phc_slaves, list) {
+#ifdef PTP_PIN_SETFUNC
 		extts.index = slave->pin_desc.chan;
+#else
+		extts.index = 0;
+#endif //PTP_PIN_SETFUNC
 		extts.flags = slave->polarity | PTP_ENABLE_FEATURE;
 		err = ioctl(slave->fd, PTP_EXTTS_REQUEST, &extts);
 		if (err < 0) {
